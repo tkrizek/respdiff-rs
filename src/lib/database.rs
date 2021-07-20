@@ -1,13 +1,13 @@
 use lmdb::{DatabaseFlags, Database, Environment};
 use std::path::Path;
 
-use super::RespdiffError;
+use crate::Result;
 
 // Version string of supported respdiff db.
 const BIN_FORMAT_VERSION: &str = "2018-05-21";
 
 // Create an LMDB Environment. Only a single instance can exist in a process.
-pub fn open_env(dir: &Path) -> Result<Environment, RespdiffError> {
+pub fn open_env(dir: &Path) -> Result<Environment> {
     Ok(Environment::new()
         .set_max_dbs(5)
         .set_map_size(10 * 1024_usize.pow(3))     // 10 G
@@ -16,7 +16,7 @@ pub fn open_env(dir: &Path) -> Result<Environment, RespdiffError> {
 }
 
 // Create or open an LMDB database.
-pub fn open_db(env: &Environment, name: &str, create: bool) -> Result<Database, RespdiffError> {
+pub fn open_db(env: &Environment, name: &str, create: bool) -> Result<Database> {
     if create {
         Ok(env.create_db(Some(name), DatabaseFlags::empty())?)
     } else {
@@ -29,26 +29,30 @@ pub mod metadb {
     use byteorder::{ByteOrder, LittleEndian};
     use lmdb::{Database, RoTransaction, RwTransaction, Transaction, WriteFlags};
     use std::convert::TryInto;
-    use std::error::Error;
     use std::time::SystemTime;
-    use super::RespdiffError;
+    use crate::{Result, RespdiffError};
 
     pub const NAME: &str = "meta";
 
-    pub fn write_version(db: Database, txn: &mut RwTransaction) -> Result<(), RespdiffError> {
+    pub fn write_version(db: Database, txn: &mut RwTransaction) -> Result<()> {
         Ok(txn.put(db, b"version", &super::BIN_FORMAT_VERSION, WriteFlags::empty())?)
     }
 
-    pub fn write_start_time(db: Database, txn: &mut RwTransaction) -> Result<(), Box<dyn Error>> {
-        let duration = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH)?;
-        let ts: u32 = duration.as_secs().try_into()?;
+    pub fn write_start_time(db: Database, txn: &mut RwTransaction) -> Result<()> {
+        let duration = match SystemTime::now().duration_since(SystemTime::UNIX_EPOCH) {
+            Ok(val) => val,
+            Err(_) => return Err(RespdiffError::Time),
+        };
+        let ts: u32 = match duration.as_secs().try_into() {
+            Ok(val) => val,
+            Err(_) => return Err(RespdiffError::Time),
+        };
         let mut bytes = [0; 4];
         LittleEndian::write_u32(&mut bytes, ts);
-        txn.put(db, b"start_time", &bytes, WriteFlags::empty())?;
-        Ok(())
+        Ok(txn.put(db, b"start_time", &bytes, WriteFlags::empty())?)
     }
 
-    pub fn read_version(db: Database, txn: &RoTransaction) -> Result<String, Box<dyn Error>> {
+    pub fn read_version(db: Database, txn: &RoTransaction) -> Result<String> {
         let version = txn.get(db, b"version")?;
         Ok(String::from_utf8(version.to_vec())?)
     }

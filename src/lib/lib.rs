@@ -1,15 +1,17 @@
 use lmdb;
 use std::error::Error;
 use std::fmt;
-use std::time::SystemTimeError;
+use std::string::FromUtf8Error;
+use std::result;
 
 pub mod database;
 
-#[derive(Debug, Eq, PartialEq)]
+#[derive(Debug)]
 pub enum RespdiffError {
     Database(lmdb::Error),
     UnsupportedVersion,
-    //Time(SystemTimeError),
+    Time,
+    NonAscii(FromUtf8Error),
 }
 
 impl fmt::Display for RespdiffError {
@@ -17,6 +19,8 @@ impl fmt::Display for RespdiffError {
         match &self {
             RespdiffError::Database(e) => write!(fmt, "database error: {}", e),
             RespdiffError::UnsupportedVersion => write!(fmt, "unsupported LMDB binary format"),
+            RespdiffError::Time => write!(fmt, "failed to obtain current time"),
+            RespdiffError::NonAscii(e) => write!(fmt, "non-ascii characters in conversion: {}", e),
         }
     }
 }
@@ -28,3 +32,11 @@ impl From<lmdb::Error> for RespdiffError {
         RespdiffError::Database(error)
     }
 }
+
+impl From<FromUtf8Error> for RespdiffError {
+    fn from(error: FromUtf8Error) -> Self {
+        RespdiffError::NonAscii(error)
+    }
+}
+
+pub type Result<T> = result::Result<T, RespdiffError>;
