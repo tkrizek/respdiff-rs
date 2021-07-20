@@ -17,3 +17,6 @@ path = "src/bin/transceiver.rs"
 [dependencies]
 lmdb-rkv = "0.14.0"
 byteorder = "1"
+
+[dev-dependencies]
+tempdir = "0.3"
