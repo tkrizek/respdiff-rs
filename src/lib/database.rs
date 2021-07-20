@@ -1,40 +1,42 @@
-use lmdb::{DatabaseFlags, Database, Environment, Error as LmdbError};
+use lmdb::{DatabaseFlags, Database, Environment};
 use std::path::Path;
+
+use super::RespdiffError;
 
 // Version string of supported respdiff db.
 const BIN_FORMAT_VERSION: &str = "2018-05-21";
 
 // Create an LMDB Environment. Only a single instance can exist in a process.
-pub fn open_env(dir: &Path) -> Result<Environment, LmdbError> {
-    Environment::new()
+pub fn open_env(dir: &Path) -> Result<Environment, RespdiffError> {
+    Ok(Environment::new()
         .set_max_dbs(5)
         .set_map_size(10 * 1024_usize.pow(3))     // 10 G
         .set_max_readers(384)               // TODO: may need increasing?
-        .open(dir)
+        .open(dir)?)
 }
 
 // Create or open an LMDB database.
-pub fn open_db(env: &Environment, name: &str, create: bool) -> Result<Database, LmdbError> {
+pub fn open_db(env: &Environment, name: &str, create: bool) -> Result<Database, RespdiffError> {
     if create {
-        env.create_db(Some(name), DatabaseFlags::empty())
+        Ok(env.create_db(Some(name), DatabaseFlags::empty())?)
     } else {
-        env.open_db(Some(name))
+        Ok(env.open_db(Some(name))?)
     }
 }
 
 // Functions to work with the "meta" database.
 pub mod metadb {
     use byteorder::{ByteOrder, LittleEndian};
-    use lmdb::{Database, Error as LmdbError, RoTransaction, RwTransaction, Transaction, WriteFlags};
+    use lmdb::{Database, RoTransaction, RwTransaction, Transaction, WriteFlags};
     use std::convert::TryInto;
     use std::error::Error;
     use std::time::SystemTime;
+    use super::RespdiffError;
 
     pub const NAME: &str = "meta";
 
-    pub fn write_version(db: Database, txn: &mut RwTransaction) -> Result<(), LmdbError> {
-        txn.put(db, b"version", &super::BIN_FORMAT_VERSION, WriteFlags::empty())?;
-        Ok(())
+    pub fn write_version(db: Database, txn: &mut RwTransaction) -> Result<(), RespdiffError> {
+        Ok(txn.put(db, b"version", &super::BIN_FORMAT_VERSION, WriteFlags::empty())?)
     }
 
     pub fn write_start_time(db: Database, txn: &mut RwTransaction) -> Result<(), Box<dyn Error>> {
