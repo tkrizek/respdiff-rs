@@ -6,7 +6,7 @@ use std::result;
 
 pub mod database;
 
-#[derive(Debug)]
+#[derive(Debug, Eq, PartialEq)]
 pub enum RespdiffError {
     Database(lmdb::Error),
     UnsupportedVersion,

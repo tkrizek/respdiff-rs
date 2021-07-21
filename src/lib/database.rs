@@ -1,7 +1,7 @@
-use lmdb::{DatabaseFlags, Database, Environment};
+use lmdb::{DatabaseFlags, Database, Environment, Error as LmdbError};
 use std::path::Path;
 
-use crate::Result;
+use crate::{Result, RespdiffError};
 
 // Version string of supported respdiff db.
 const BIN_FORMAT_VERSION: &str = "2018-05-21";
@@ -21,6 +21,15 @@ pub fn open_db(env: &Environment, name: &str, create: bool) -> Result<Database> 
         Ok(env.create_db(Some(name), DatabaseFlags::empty())?)
     } else {
         Ok(env.open_db(Some(name))?)
+    }
+}
+
+// Check if database exists already.
+pub fn exists_db(env: &Environment, name: &str) -> Result<bool> {
+    match env.open_db(Some(name)) {
+        Ok(_) => Ok(true),
+        Err(LmdbError::NotFound) => Ok(false),
+        Err(e) => Err(RespdiffError::Database(e)),
     }
 }
 
@@ -64,10 +73,12 @@ pub mod metadb {
     }
 }
 
+
+
 #[cfg(test)]
 mod tests {
     use tempdir::TempDir;
-    use lmdb::Transaction;
+    use lmdb::{Error as LmdbError, Transaction};
     use super::*;
 
     #[test]
@@ -83,5 +94,23 @@ mod tests {
         let txn = env.begin_ro_txn().unwrap();
         let version = metadb::check_version(db, &txn).unwrap();
         assert_eq!(version, BIN_FORMAT_VERSION);
+    }
+
+    #[test]
+    fn exists() {
+        let dir = TempDir::new("test").unwrap();
+        let env = open_env(dir.path()).unwrap();
+        let _d1 = open_db(&env, "d1", true).unwrap();
+
+        assert_eq!(exists_db(&env, "d1").unwrap(), true);
+        assert_eq!(exists_db(&env, "x").unwrap(), false);
+
+        // trigger DbsFull becuase we set db limit to 5
+        let _d2 = open_db(&env, "d2", true).unwrap();
+        let _d3 = open_db(&env, "d3", true).unwrap();
+        let _d4 = open_db(&env, "d4", true).unwrap();
+        let _d5 = open_db(&env, "d5", true).unwrap();
+
+        assert_eq!(exists_db(&env, "x"), Err(RespdiffError::Database(LmdbError::DbsFull)));
     }
 }
