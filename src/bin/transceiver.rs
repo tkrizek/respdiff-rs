@@ -48,7 +48,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     }
     {
         let txn = env.begin_ro_txn()?;
-        let version = database::metadb::read_version(metadb, &txn)?;
+        let version = database::metadb::check_version(metadb, &txn)?;
         println!("version: {}", version);
     }
 

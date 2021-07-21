@@ -52,9 +52,15 @@ pub mod metadb {
         Ok(txn.put(db, b"start_time", &bytes, WriteFlags::empty())?)
     }
 
-    pub fn read_version(db: Database, txn: &RoTransaction) -> Result<String> {
+    pub fn check_version(db: Database, txn: &RoTransaction) -> Result<String> {
         let version = txn.get(db, b"version")?;
-        Ok(String::from_utf8(version.to_vec())?)
+        let version = String::from_utf8(version.to_vec())?;
+
+        if version == super::BIN_FORMAT_VERSION {
+            Ok(version)
+        } else {
+            Err(RespdiffError::UnsupportedVersion)
+        }
     }
 }
 
@@ -75,8 +81,7 @@ mod tests {
         txn.commit().unwrap();
 
         let txn = env.begin_ro_txn().unwrap();
-        let version = metadb::read_version(db, &txn).unwrap();
-
+        let version = metadb::check_version(db, &txn).unwrap();
         assert_eq!(version, BIN_FORMAT_VERSION);
     }
 }
