@@ -3,21 +3,24 @@ extern crate lmdb;
 use std::error::Error;
 use std::path::Path;
 use lmdb::Transaction;
+use log::error;
 use respdiff::database;
 
-
-fn main() -> Result<(), Box<dyn Error>> {
+fn transceiver() -> Result<(), Box<dyn Error>> {
     let dir = Path::new("/tmp/respdiff-rs.db");
     let env = match database::open_env(dir) {
         Ok(env) => env,
-        Err(e) => panic!("Failed to open LMDB environment: {:?}", e)
+        Err(e) => {
+            error!("failed to open LMDB environment: {:?}", e);
+            std::process::exit(1);
+        },
     };
     let metadb = match database::open_db(&env, &database::metadb::NAME, true) {
         Ok(db) => db,
-        Err(e) => panic!(
-            "Failed to open LMDB database '{}': {:?}",
-            &database::metadb::NAME,
-            e)
+        Err(e) => {
+            error!("failed to open LMDB database '{}': {:?}", &database::metadb::NAME, e);
+            std::process::exit(1);
+        },
     };
     //let querydb = match database::open_db(&env, &database::querydb::NAME, true) {
     //    Ok(db) => db,
@@ -52,5 +55,24 @@ fn main() -> Result<(), Box<dyn Error>> {
         println!("version: {}", version);
     }
 
+
+
+    if database::exists_db(&env, &database::answersdb::NAME)? {
+        error!("answers database already exists");
+        std::process::exit(1);
+    }
+
     Ok(())
+}
+
+fn main() {
+    env_logger::init();
+
+    match transceiver() {
+        Ok(_) => {},
+        Err(e) => {
+            error!("{}", e);
+            std::process::exit(1);
+        },
+    };
 }

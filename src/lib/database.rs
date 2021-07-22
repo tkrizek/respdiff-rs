@@ -73,7 +73,13 @@ pub mod metadb {
     }
 }
 
+pub mod queriesdb {
+    pub const NAME: &str = "queries";
+}
 
+pub mod answersdb {
+    pub const NAME: &str = "answers";
+}
 
 #[cfg(test)]
 mod tests {
