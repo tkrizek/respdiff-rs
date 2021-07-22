@@ -1,10 +1,12 @@
 extern crate lmdb;
 
+use std::convert::TryFrom;
 use std::error::Error;
 use std::path::Path;
-use lmdb::Transaction;
+use lmdb::{Cursor, Transaction};
 use log::error;
 use respdiff::database;
+use respdiff::database::queriesdb::Query;
 
 fn transceiver() -> Result<(), Box<dyn Error>> {
     let dir = Path::new("/tmp/respdiff-rs.db");
@@ -49,17 +51,28 @@ fn transceiver() -> Result<(), Box<dyn Error>> {
         database::metadb::write_start_time(metadb, &mut txn)?;
         txn.commit()?;
     }
+
+    //if database::exists_db(&env, &database::answersdb::NAME)? {
+    //    error!("answers database already exists");
+    //    std::process::exit(1);
+    //}
+    let adb = database::open_db(&env, &database::answersdb::NAME, true)?;
+
+    let qdb = match database::open_db(&env, &database::queriesdb::NAME, false) {
+        Ok(db) => db,
+        Err(e) => {
+            error!("failed to open LMDB database '{}': {:?}", &database::queriesdb::NAME, e);
+            std::process::exit(1);
+        },
+    };
+
     {
         let txn = env.begin_ro_txn()?;
-        let version = database::metadb::check_version(metadb, &txn)?;
-        println!("version: {}", version);
-    }
-
-
-
-    if database::exists_db(&env, &database::answersdb::NAME)? {
-        error!("answers database already exists");
-        std::process::exit(1);
+        let mut cur = txn.open_ro_cursor(qdb)?;
+        let iter = cur.iter().map(|x| Query::try_from(x));
+        iter.for_each(|query| {
+            println!("{:?}", query);
+        });
     }
 
     Ok(())

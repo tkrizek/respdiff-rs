@@ -74,7 +74,36 @@ pub mod metadb {
 }
 
 pub mod queriesdb {
+    use std::convert::TryFrom;
+    use byteorder::{ByteOrder, LittleEndian};
+    use log::warn;
+
     pub const NAME: &str = "queries";
+
+    #[derive(Debug)]
+    pub struct Query {
+        pub key: u32,
+        pub wire: Vec<u8>,
+    }
+
+    impl TryFrom<lmdb::Result<(&[u8], &[u8])>> for Query {
+        type Error = lmdb::Error;
+
+        fn try_from(item: lmdb::Result<(&[u8], &[u8])>) -> Result<Self, Self::Error> {
+            match item {
+                Ok((key, val)) => {
+                    Ok(Query {
+                        key: LittleEndian::read_u32(&key),
+                        wire: val.to_vec(),
+                    })
+                },
+                Err(e) => {
+                    warn!("failed to read query from db");
+                    Err(e)
+                },
+            }
+        }
+    }
 }
 
 pub mod answersdb {
