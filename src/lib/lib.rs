@@ -5,6 +5,7 @@ use std::string::FromUtf8Error;
 use std::result;
 
 pub mod database;
+pub mod config;
 
 #[derive(Debug, Eq, PartialEq)]
 pub enum RespdiffError {

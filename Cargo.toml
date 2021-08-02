@@ -19,6 +19,8 @@ lmdb-rkv = "0.14"
 byteorder = "1"
 log = "0.4"
 env_logger = "0.9"
+serde = { version = "1.0", features = ["derive"] }
+serde_ini = "0.2.0"
 
 [dev-dependencies]
 tempdir = "0.3"
