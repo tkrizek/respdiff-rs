@@ -1,12 +1,13 @@
 use serde::{Deserialize, Deserializer};
 use std::collections::HashMap;
-use std::convert::TryFrom;
+use std::convert::{TryFrom, TryInto};
 use std::net::IpAddr;
 use crate::RespdiffError;
 
 #[derive(Deserialize, PartialEq, Debug, Clone)]
 pub struct Config {
     sendrecv: SendRecvConfig,
+    diff: DiffConfig,
     #[serde(deserialize_with = "servers_from_namelist")]
     servers: Vec<String>,
     #[serde(flatten)]
@@ -65,9 +66,71 @@ impl TryFrom<String> for TransportProtocol {
             "udp" => Ok(TransportProtocol::Udp),
             "tcp" => Ok(TransportProtocol::Tcp),
             "tls" => Ok(TransportProtocol::Tls),
-            _ => Err(RespdiffError::InvalidTransportProtocol(value.to_string())),
+            _ => Err(RespdiffError::UnknownTransportProtocol(value.to_string())),
         }
     }
+}
+
+#[derive(Deserialize, PartialEq, Eq, Debug, Clone)]
+pub struct DiffConfig {
+    target: String,
+    #[serde(deserialize_with = "criteria_from_list")]
+    criteria: Vec<DiffCriteria>,
+}
+
+#[derive(Deserialize, PartialEq, Eq, Debug, Copy, Clone)]
+#[serde(try_from = "String")]
+pub enum DiffCriteria {
+    Opcode,
+    Rcode,
+    Flags,
+    Question,
+    AnswerTypes,
+    AnswerRrsigs,
+    Authority,
+    Additional,
+    Edns,
+    Nsid,
+}
+
+impl TryFrom<&str> for DiffCriteria {
+    type Error = RespdiffError;
+
+    fn try_from(value: &str) -> Result<Self, Self::Error> {
+        match value {
+            "opcode" => Ok(DiffCriteria::Opcode),
+            "rcode" => Ok(DiffCriteria::Rcode),
+            "flags" => Ok(DiffCriteria::Flags),
+            "question" => Ok(DiffCriteria::Question),
+            "answertypes" => Ok(DiffCriteria::AnswerTypes),
+            "answerrrsigs" => Ok(DiffCriteria::AnswerRrsigs),
+            "authority" => Ok(DiffCriteria::Authority),
+            "additional" => Ok(DiffCriteria::Additional),
+            "edns" => Ok(DiffCriteria::Edns),
+            "nsid" => Ok(DiffCriteria::Nsid),
+            _ => Err(RespdiffError::UnknownDiffCriteria(value.to_string())),
+        }
+    }
+}
+
+impl TryFrom<String> for DiffCriteria {
+    type Error = RespdiffError;
+
+    fn try_from(value: String) -> Result<Self, Self::Error> {
+        value.try_into()
+    }
+}
+
+fn criteria_from_list<'de, D>(deserializer: D) -> Result<Vec<DiffCriteria>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let criterialist: String = Deserialize::deserialize(deserializer)?;
+    let criteria: Result<Vec<DiffCriteria>, _> = criterialist
+        .split(',')
+        .map(|criteria| criteria.trim().try_into())
+        .collect();
+    criteria.map_err(serde::de::Error::custom)
 }
 
 #[cfg(test)]
@@ -110,7 +173,22 @@ transport = tls
 [cznic]
 ip = 185.43.135.1
 port = 53
-transport = udp";
+transport = udp
+
+[diff]
+# symbolic name of server under test
+# other servers are used as reference when comparing answers from the target
+target = cznic
+
+# fields and comparison methods used when comparing two DNS messages
+criteria = opcode, rcode, flags, question, answertypes, answerrrsigs
+# other supported criteria values: authority, additional, edns, nsid
+
+#[report]
+## diffsum reports mismatches in field values in this order
+## if particular message has multiple mismatches, it is counted only once into category with highest weight
+#field_weights = timeout, malformed, opcode, question, rcode, flags, answertypes, answerrrsigs, answer, authority, additional, edns, nsid
+";
 
     fn expected() -> Config {
         Config {
@@ -120,6 +198,17 @@ transport = udp";
                 time_delay_min: 0.0,
                 time_delay_max: 0.0,
                 max_timeouts: 10,
+            },
+            diff: DiffConfig {
+                target: "cznic".to_string(),
+                criteria: vec![
+                    DiffCriteria::Opcode,
+                    DiffCriteria::Rcode,
+                    DiffCriteria::Flags,
+                    DiffCriteria::Question,
+                    DiffCriteria::AnswerTypes,
+                    DiffCriteria::AnswerRrsigs,
+                ],
             },
             servers: vec![
                 "google".to_string(),
