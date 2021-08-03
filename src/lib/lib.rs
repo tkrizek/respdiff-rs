@@ -13,6 +13,7 @@ pub enum RespdiffError {
     UnsupportedVersion,
     Time,
     NonAscii(FromUtf8Error),
+    InvalidTransportProtocol(String),
 }
 
 impl fmt::Display for RespdiffError {
@@ -22,6 +23,7 @@ impl fmt::Display for RespdiffError {
             RespdiffError::UnsupportedVersion => write!(fmt, "unsupported LMDB binary format"),
             RespdiffError::Time => write!(fmt, "failed to obtain current time"),
             RespdiffError::NonAscii(e) => write!(fmt, "non-ascii characters in conversion: {}", e),
+            RespdiffError::InvalidTransportProtocol(e) => write!(fmt, "unknown transport protocol: {}", e),
         }
     }
 }
