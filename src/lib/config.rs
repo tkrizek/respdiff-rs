@@ -1,16 +1,30 @@
-use serde::Deserialize;
+use serde::{Deserialize, Deserializer};
+use std::collections::HashMap;
 use std::convert::TryFrom;
-use std::path::Path;
 use std::net::IpAddr;
 use crate::RespdiffError;
 
-#[derive(Deserialize, PartialEq, Debug)]
+#[derive(Deserialize, PartialEq, Debug, Clone)]
 pub struct Config {
     sendrecv: SendRecvConfig,
-    cznic: ServerConfig,  // TODO use actual server array
+    #[serde(deserialize_with = "servers_from_namelist")]
+    servers: Vec<String>,
+    #[serde(flatten)]
+    server_data: HashMap<String, ServerConfig>,
 }
 
-#[derive(Deserialize, PartialEq, Debug)]
+fn servers_from_namelist<'de, D>(deserializer: D) -> Result<Vec<String>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let m: HashMap<String, String> = Deserialize::deserialize(deserializer)?;
+    match m.get("names") {
+        Some(namelist) => Ok(namelist.split(',').map(|name| name.trim().to_string()).collect()),
+        None => Err(serde::de::Error::custom("[servers] section missing key 'names'")),
+    }
+}
+
+#[derive(Deserialize, PartialEq, Debug, Copy, Clone)]
 pub struct SendRecvConfig {
     timeout: f64,
     jobs: u64,
@@ -19,14 +33,23 @@ pub struct SendRecvConfig {
     max_timeouts: u64,
 }
 
-#[derive(Deserialize, PartialEq, Debug)]
+#[derive(Deserialize, PartialEq, Debug, Copy, Clone)]
 pub struct ServerConfig {
     ip: IpAddr,
+    #[serde(deserialize_with = "port_from_str")]
     port: u16,
     transport: TransportProtocol,
 }
 
-#[derive(Deserialize, PartialEq, Debug)]
+fn port_from_str<'de, D>(deserializer: D) -> Result<u16, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let s: String = Deserialize::deserialize(deserializer)?;
+    s.parse().map_err(serde::de::Error::custom)
+}
+
+#[derive(Deserialize, PartialEq, Debug, Copy, Clone)]
 #[serde(try_from = "String")]
 pub enum TransportProtocol {
     Udp,
@@ -52,7 +75,6 @@ mod tests {
     use super::*;
 
     const TEST_INPUT: &'static str = "
-test = 3
 [sendrecv]
 # in seconds (float)
 timeout = 16
@@ -99,11 +121,28 @@ transport = udp";
                 time_delay_max: 0.0,
                 max_timeouts: 10,
             },
-            cznic: ServerConfig {
-                ip: "185.43.135.1".parse().unwrap(),
-                port: 53,
-                transport: TransportProtocol::Udp,
-            },
+            servers: vec![
+                "google".to_string(),
+                "cloudflare".to_string(),
+                "cznic".to_string(),
+            ],
+            server_data: [
+                ("cznic", ServerConfig {
+                    ip: "185.43.135.1".parse().unwrap(),
+                    port: 53,
+                    transport: TransportProtocol::Udp,
+                }),
+                ("google", ServerConfig {
+                    ip: "8.8.8.8".parse().unwrap(),
+                    port: 53,
+                    transport: TransportProtocol::Tcp,
+                }),
+                ("cloudflare", ServerConfig {
+                    ip: "1.1.1.1".parse().unwrap(),
+                    port: 853,
+                    transport: TransportProtocol::Tls,
+                }),
+            ].iter().map(|(k, v)| (k.to_string(), v.to_owned())).collect(),
         }
     }
 
