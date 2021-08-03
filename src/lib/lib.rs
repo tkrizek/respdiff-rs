@@ -15,6 +15,7 @@ pub enum RespdiffError {
     NonAscii(FromUtf8Error),
     UnknownTransportProtocol(String),
     UnknownDiffCriteria(String),
+    UnknownFieldWeight(String),
 }
 
 impl fmt::Display for RespdiffError {
@@ -26,6 +27,7 @@ impl fmt::Display for RespdiffError {
             RespdiffError::NonAscii(e) => write!(fmt, "non-ascii characters in conversion: {}", e),
             RespdiffError::UnknownTransportProtocol(s) => write!(fmt, "unknown transport protocol: {}", s),
             RespdiffError::UnknownDiffCriteria(s) => write!(fmt, "unknown diff criteria: {}", s),
+            RespdiffError::UnknownFieldWeight(s) => write!(fmt, "unknown field weight: {}", s),
         }
     }
 }

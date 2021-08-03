@@ -8,6 +8,7 @@ use crate::RespdiffError;
 pub struct Config {
     sendrecv: SendRecvConfig,
     diff: DiffConfig,
+    report: ReportConfig,
     #[serde(deserialize_with = "servers_from_namelist")]
     servers: Vec<String>,
     #[serde(flatten)]
@@ -133,6 +134,72 @@ where
     criteria.map_err(serde::de::Error::custom)
 }
 
+#[derive(Deserialize, PartialEq, Eq, Debug, Clone)]
+pub struct ReportConfig {
+    #[serde(deserialize_with = "field_weights_from_list")]
+    field_weights: Vec<FieldWeight>,
+}
+
+#[derive(Deserialize, PartialEq, Eq, Debug, Copy, Clone)]
+#[serde(try_from = "String")]
+pub enum FieldWeight {
+    Timeout,
+    Malformed,
+    Opcode,
+    Question,
+    Rcode,
+    Flags,
+    AnswerTypes,
+    AnswerRrsigs,
+    Answer,
+    Authority,
+    Additional,
+    Edns,
+    Nsid,
+}
+
+impl TryFrom<&str> for FieldWeight {
+    type Error = RespdiffError;
+
+    fn try_from(value: &str) -> Result<Self, Self::Error> {
+        match value {
+            "timeout" => Ok(FieldWeight::Timeout),
+            "malformed" => Ok(FieldWeight::Malformed),
+            "opcode" => Ok(FieldWeight::Opcode),
+            "question" => Ok(FieldWeight::Question),
+            "rcode" => Ok(FieldWeight::Rcode),
+            "flags" => Ok(FieldWeight::Flags),
+            "answertypes" => Ok(FieldWeight::AnswerTypes),
+            "answerrrsigs" => Ok(FieldWeight::AnswerRrsigs),
+            "answer" => Ok(FieldWeight::Answer),
+            "authority" => Ok(FieldWeight::Authority),
+            "additional" => Ok(FieldWeight::Additional),
+            "edns" => Ok(FieldWeight::Edns),
+            "nsid" => Ok(FieldWeight::Nsid),
+            _ => Err(RespdiffError::UnknownFieldWeight(value.to_string())),
+        }
+    }
+}
+
+impl TryFrom<String> for FieldWeight {
+    type Error = RespdiffError;
+
+    fn try_from(value: String) -> Result<Self, Self::Error> {
+        value.try_into()
+    }
+}
+
+fn field_weights_from_list<'de, D>(deserializer: D) -> Result<Vec<FieldWeight>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let weightlist: String = Deserialize::deserialize(deserializer)?;
+    let field_weights: Result<Vec<FieldWeight>, _> = weightlist
+        .split(',')
+        .map(|field_weight| field_weight.trim().try_into())
+        .collect();
+    field_weights.map_err(serde::de::Error::custom)
+}
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -184,10 +251,10 @@ target = cznic
 criteria = opcode, rcode, flags, question, answertypes, answerrrsigs
 # other supported criteria values: authority, additional, edns, nsid
 
-#[report]
-## diffsum reports mismatches in field values in this order
-## if particular message has multiple mismatches, it is counted only once into category with highest weight
-#field_weights = timeout, malformed, opcode, question, rcode, flags, answertypes, answerrrsigs, answer, authority, additional, edns, nsid
+[report]
+# diffsum reports mismatches in field values in this order
+# if particular message has multiple mismatches, it is counted only once into category with highest weight
+field_weights = timeout, malformed, opcode, question, rcode, flags, answertypes, answerrrsigs, answer, authority, additional, edns, nsid
 ";
 
     fn expected() -> Config {
@@ -208,6 +275,23 @@ criteria = opcode, rcode, flags, question, answertypes, answerrrsigs
                     DiffCriteria::Question,
                     DiffCriteria::AnswerTypes,
                     DiffCriteria::AnswerRrsigs,
+                ],
+            },
+            report: ReportConfig {
+                field_weights: vec![
+                    FieldWeight::Timeout,
+                    FieldWeight::Malformed,
+                    FieldWeight::Opcode,
+                    FieldWeight::Question,
+                    FieldWeight::Rcode,
+                    FieldWeight::Flags,
+                    FieldWeight::AnswerTypes,
+                    FieldWeight::AnswerRrsigs,
+                    FieldWeight::Answer,
+                    FieldWeight::Authority,
+                    FieldWeight::Additional,
+                    FieldWeight::Edns,
+                    FieldWeight::Nsid,
                 ],
             },
             servers: vec![
