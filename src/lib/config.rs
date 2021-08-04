@@ -10,7 +10,7 @@ pub struct Config {
     diff: DiffConfig,
     report: ReportConfig,
     #[serde(deserialize_with = "servers_from_namelist")]
-    servers: Vec<String>,
+    pub servers: Vec<String>,
     #[serde(flatten)]
     server_data: HashMap<String, ServerConfig>,
 }

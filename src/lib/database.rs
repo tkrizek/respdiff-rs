@@ -71,6 +71,22 @@ pub mod metadb {
             Err(RespdiffError::UnsupportedVersion)
         }
     }
+
+    pub fn write_servers(
+        db: Database,
+        txn: &mut RwTransaction,
+        servers: Vec<String>
+    ) -> Result<()>
+    {
+        let mut bytes = [0; 4];
+        LittleEndian::write_u32(&mut bytes, servers.len() as u32);
+        txn.put(db, b"servers", &bytes, WriteFlags::empty())?;
+
+        for (i, name) in servers.into_iter().enumerate() {
+            txn.put(db, &format!("name{}", i), &name, WriteFlags::empty())?;
+        }
+        Ok(())
+    }
 }
 
 pub mod queriesdb {

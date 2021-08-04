@@ -85,6 +85,7 @@ fn transceiver() -> Result<(), Box<dyn Error>> {
 
     {
         let mut txn = env.begin_rw_txn()?;
+        database::metadb::write_servers(metadb, &mut txn, args.config.servers)?;
         database::metadb::write_version(metadb, &mut txn)?;
         database::metadb::write_start_time(metadb, &mut txn)?;
         txn.commit()?;
