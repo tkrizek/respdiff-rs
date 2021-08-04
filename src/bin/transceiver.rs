@@ -2,15 +2,53 @@ extern crate lmdb;
 
 use std::convert::TryFrom;
 use std::error::Error;
-use std::path::Path;
+use std::fs::File;
+use std::io::BufReader;
+use std::path::PathBuf;
+use clap::{Arg, App};
 use lmdb::{Cursor, Transaction};
 use log::error;
+use respdiff::config::Config;
 use respdiff::database;
 use respdiff::database::queriesdb::Query;
+use serde_ini;
+
+struct Args {
+    config: Config,
+    envdir: PathBuf,
+}
+
+fn parse_args() -> Result<Args, Box<dyn Error>> {
+    let matches = App::new("Respdiff: Transceiver")
+        .about("send queries to servers and record answers (replaces orchestrator.py)")
+        .arg(Arg::with_name("ENVDIR")
+            .help("LMDB environment directory")
+            .required(true))
+        .arg(Arg::with_name("config")
+            .help("config file path")
+            .short("c")
+            .long("config")
+            .value_name("FILE")
+            .takes_value(true))
+        .get_matches();
+
+    Ok(Args {
+        config: {
+            // TODO custom error handling
+            let path = matches.value_of("config").unwrap_or("respdiff.cfg");
+            let buf = BufReader::new(File::open(path)?);
+            serde_ini::from_bufread::<_, Config>(buf)?
+        },
+        envdir: {
+            matches.value_of("ENVDIR").unwrap().into()
+        },
+    })
+}
 
 fn transceiver() -> Result<(), Box<dyn Error>> {
-    let dir = Path::new("/tmp/respdiff-rs.db");
-    let env = match database::open_env(dir) {
+    let args = parse_args()?;
+
+    let env = match database::open_env(&args.envdir) {
         Ok(env) => env,
         Err(e) => {
             error!("failed to open LMDB environment: {:?}", e);
