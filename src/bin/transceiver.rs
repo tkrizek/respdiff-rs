@@ -60,26 +60,6 @@ fn transceiver() -> Result<(), Box<dyn Error>> {
             std::process::exit(1);
         },
     };
-    //let querydb = match database::open_db(&env, &database::querydb::NAME, true) {
-    //    Ok(db) => db,
-    //    Err(e) => panic!(
-    //        "Failed to open LMDB database '{s}': {:?}",
-    //        &database::querydb::NAME,
-    //        e);
-    //}
-
-    //{
-    //    let txn = db.begin_ro_txn()?;
-
-    //    let mut cur = txn.open_ro_cursor(db)?;
-
-    //    cur.iter().for_each(|res| {
-    //        if let Ok((key, val)) = res {
-    //            let key = LittleEndian::read_u32(&key);
-    //            //println!("{:?} -> {:?}", key, val);
-    //        }
-    //    });
-    //}
 
     {
         let mut txn = env.begin_rw_txn()?;
@@ -93,7 +73,7 @@ fn transceiver() -> Result<(), Box<dyn Error>> {
     //    error!("answers database already exists");
     //    std::process::exit(1);
     //}
-    let adb = database::open_db(&env, &database::answersdb::NAME, true)?;
+    let _adb = database::open_db(&env, &database::answersdb::NAME, true)?;
 
     let qdb = match database::open_db(&env, &database::queriesdb::NAME, false) {
         Ok(db) => db,
@@ -112,7 +92,7 @@ fn transceiver() -> Result<(), Box<dyn Error>> {
         });
     }
 
-    Ok(())
+    Err(Box::new(respdiff::Error::NotImplemented))
 }
 
 fn main() {

@@ -15,6 +15,7 @@ pub enum Error {
     UnknownFieldWeight(String),
     ConfigFile(io::Error),
     ConfigRead(de::Error),
+    NotImplemented,
 }
 
 impl fmt::Display for Error {
@@ -29,6 +30,7 @@ impl fmt::Display for Error {
             Error::UnknownFieldWeight(s) => write!(fmt, "unknown field weight: {}", s),
             Error::ConfigFile(e) => write!(fmt, "config file error: {}", e),
             Error::ConfigRead(e) => write!(fmt, "failed to read config: {}", e),
+            Error::NotImplemented => write!(fmt, "functionality not yet implemented"),
         }
     }
 }
@@ -46,6 +48,7 @@ impl PartialEq for Error {
             (UnknownFieldWeight(a), UnknownFieldWeight(b)) => a == b,
             (ConfigFile(_), ConfigFile(_)) => true,
             (ConfigRead(_), ConfigRead(_)) => true,
+            (NotImplemented, NotImplemented) => true,
             _ => false,
         }
     }
