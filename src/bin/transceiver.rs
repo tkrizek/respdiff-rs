@@ -8,9 +8,7 @@ use std::path::PathBuf;
 use clap::{Arg, App};
 use lmdb::{Cursor, Transaction};
 use log::error;
-use respdiff::config::Config;
-use respdiff::database;
-use respdiff::database::queriesdb::Query;
+use respdiff::{self, config::Config, database::{self, queriesdb::Query}};
 use serde_ini;
 
 struct Args {
@@ -18,7 +16,7 @@ struct Args {
     envdir: PathBuf,
 }
 
-fn parse_args() -> Result<Args, Box<dyn Error>> {
+fn parse_args() -> Result<Args, respdiff::Error> {
     let matches = App::new("Respdiff: Transceiver")
         .about("send queries to servers and record answers (replaces orchestrator.py)")
         .arg(Arg::with_name("ENVDIR")
@@ -34,10 +32,10 @@ fn parse_args() -> Result<Args, Box<dyn Error>> {
 
     Ok(Args {
         config: {
-            // TODO custom error handling
             let path = matches.value_of("config").unwrap_or("respdiff.cfg");
-            let buf = BufReader::new(File::open(path)?);
-            serde_ini::from_bufread::<_, Config>(buf)?
+            let file = File::open(path).map_err(respdiff::Error::ConfigFile)?;
+            let buf = BufReader::new(file);
+            serde_ini::from_bufread::<_, Config>(buf).map_err(respdiff::Error::ConfigRead)?
         },
         envdir: {
             matches.value_of("ENVDIR").unwrap().into()

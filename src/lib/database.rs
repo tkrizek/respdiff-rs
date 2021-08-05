@@ -1,7 +1,7 @@
 use lmdb::{DatabaseFlags, Database, Environment, Error as LmdbError};
 use std::path::Path;
 
-use crate::{Result, RespdiffError};
+use crate::{Result, Error};
 
 // Version string of supported respdiff db.
 const BIN_FORMAT_VERSION: &str = "2018-05-21";
@@ -29,7 +29,7 @@ pub fn exists_db(env: &Environment, name: &str) -> Result<bool> {
     match env.open_db(Some(name)) {
         Ok(_) => Ok(true),
         Err(LmdbError::NotFound) => Ok(false),
-        Err(e) => Err(RespdiffError::Database(e)),
+        Err(e) => Err(Error::Database(e)),
     }
 }
 
@@ -39,7 +39,7 @@ pub mod metadb {
     use lmdb::{Database, RoTransaction, RwTransaction, Transaction, WriteFlags};
     use std::convert::TryInto;
     use std::time::SystemTime;
-    use crate::{Result, RespdiffError};
+    use crate::{Result, Error};
 
     pub const NAME: &str = "meta";
 
@@ -50,11 +50,11 @@ pub mod metadb {
     pub fn write_start_time(db: Database, txn: &mut RwTransaction) -> Result<()> {
         let duration = match SystemTime::now().duration_since(SystemTime::UNIX_EPOCH) {
             Ok(val) => val,
-            Err(_) => return Err(RespdiffError::Time),
+            Err(_) => return Err(Error::Time),
         };
         let ts: u32 = match duration.as_secs().try_into() {
             Ok(val) => val,
-            Err(_) => return Err(RespdiffError::Time),
+            Err(_) => return Err(Error::Time),
         };
         let mut bytes = [0; 4];
         LittleEndian::write_u32(&mut bytes, ts);
@@ -68,7 +68,7 @@ pub mod metadb {
         if version == super::BIN_FORMAT_VERSION {
             Ok(version)
         } else {
-            Err(RespdiffError::UnsupportedVersion)
+            Err(Error::UnsupportedVersion)
         }
     }
 
@@ -162,6 +162,6 @@ mod tests {
         let _d4 = open_db(&env, "d4", true).unwrap();
         let _d5 = open_db(&env, "d5", true).unwrap();
 
-        assert_eq!(exists_db(&env, "x"), Err(RespdiffError::Database(LmdbError::DbsFull)));
+        assert_eq!(exists_db(&env, "x"), Err(Error::Database(LmdbError::DbsFull)));
     }
 }

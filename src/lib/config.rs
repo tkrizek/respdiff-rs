@@ -2,7 +2,7 @@ use serde::{Deserialize, Deserializer};
 use std::collections::HashMap;
 use std::convert::{TryFrom, TryInto};
 use std::net::IpAddr;
-use crate::RespdiffError;
+use crate::Error;
 
 #[derive(Deserialize, PartialEq, Debug, Clone)]
 pub struct Config {
@@ -60,14 +60,14 @@ pub enum TransportProtocol {
 }
 
 impl TryFrom<String> for TransportProtocol {
-    type Error = RespdiffError;
+    type Error = Error;
 
     fn try_from(value: String) -> Result<Self, Self::Error> {
         match value.as_ref() {
             "udp" => Ok(TransportProtocol::Udp),
             "tcp" => Ok(TransportProtocol::Tcp),
             "tls" => Ok(TransportProtocol::Tls),
-            _ => Err(RespdiffError::UnknownTransportProtocol(value.to_string())),
+            _ => Err(Error::UnknownTransportProtocol(value.to_string())),
         }
     }
 }
@@ -95,7 +95,7 @@ pub enum DiffCriteria {
 }
 
 impl TryFrom<&str> for DiffCriteria {
-    type Error = RespdiffError;
+    type Error = Error;
 
     fn try_from(value: &str) -> Result<Self, Self::Error> {
         match value {
@@ -109,13 +109,13 @@ impl TryFrom<&str> for DiffCriteria {
             "additional" => Ok(DiffCriteria::Additional),
             "edns" => Ok(DiffCriteria::Edns),
             "nsid" => Ok(DiffCriteria::Nsid),
-            _ => Err(RespdiffError::UnknownDiffCriteria(value.to_string())),
+            _ => Err(Error::UnknownDiffCriteria(value.to_string())),
         }
     }
 }
 
 impl TryFrom<String> for DiffCriteria {
-    type Error = RespdiffError;
+    type Error = Error;
 
     fn try_from(value: String) -> Result<Self, Self::Error> {
         value.try_into()
@@ -159,7 +159,7 @@ pub enum FieldWeight {
 }
 
 impl TryFrom<&str> for FieldWeight {
-    type Error = RespdiffError;
+    type Error = Error;
 
     fn try_from(value: &str) -> Result<Self, Self::Error> {
         match value {
@@ -176,13 +176,13 @@ impl TryFrom<&str> for FieldWeight {
             "additional" => Ok(FieldWeight::Additional),
             "edns" => Ok(FieldWeight::Edns),
             "nsid" => Ok(FieldWeight::Nsid),
-            _ => Err(RespdiffError::UnknownFieldWeight(value.to_string())),
+            _ => Err(Error::UnknownFieldWeight(value.to_string())),
         }
     }
 }
 
 impl TryFrom<String> for FieldWeight {
-    type Error = RespdiffError;
+    type Error = Error;
 
     fn try_from(value: String) -> Result<Self, Self::Error> {
         value.try_into()
