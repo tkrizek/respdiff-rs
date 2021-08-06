@@ -59,4 +59,6 @@ impl From<DbFormatError> for Error {
 pub enum DbFormatError {
     #[error("unsupported binary format version")]
     Unsupported,
+    #[error("reply in answers db is missing data")]
+    ReplyMissingData,
 }
