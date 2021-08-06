@@ -39,7 +39,7 @@ pub mod metadb {
     use lmdb::{Database, RoTransaction, RwTransaction, Transaction, WriteFlags};
     use std::convert::TryInto;
     use std::time::SystemTime;
-    use crate::{Result, Error};
+    use crate::{Result, Error, error::DbFormatError};
 
     pub const NAME: &str = "meta";
 
@@ -68,7 +68,7 @@ pub mod metadb {
         if version == super::BIN_FORMAT_VERSION {
             Ok(version)
         } else {
-            Err(Error::UnsupportedVersion)
+            Err(DbFormatError::Unsupported.into())
         }
     }
 

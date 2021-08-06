@@ -7,10 +7,10 @@ use thiserror::Error;
 
 #[derive(Error, Debug)]
 pub enum Error {
-    #[error("database error: {0}")]
+    #[error("LMDB error: {0}")]
     Database(#[from] lmdb::Error),
-    #[error("unsupported LMDB binary format")]
-    UnsupportedVersion,
+    #[error("database format error: {0}")]
+    DbFormatError(DbFormatError),
     #[error("failed to obtain current time")]
     Time,
     #[error("non-ascii characters in conversion: {0}")]
@@ -34,7 +34,7 @@ impl PartialEq for Error {
         use Error::*;
         match (self, other) {
             (Database(a), Database(b)) => a == b,
-            (UnsupportedVersion, UnsupportedVersion) => true,
+            (DbFormatError(a), DbFormatError(b)) => a == b,
             (Time, Time) => true,
             (NonAscii(a), NonAscii(b)) => a == b,
             (UnknownTransportProtocol(a), UnknownTransportProtocol(b)) => a == b,
@@ -48,3 +48,15 @@ impl PartialEq for Error {
     }
 }
 impl Eq for Error {}
+
+impl From<DbFormatError> for Error {
+    fn from(error: DbFormatError) -> Self {
+        Self::DbFormatError(error)
+    }
+}
+
+#[derive(Error, Debug, PartialEq, Eq)]
+pub enum DbFormatError {
+    #[error("unsupported binary format version")]
+    Unsupported,
+}
