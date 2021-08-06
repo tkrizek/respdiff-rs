@@ -3,36 +3,30 @@ use std::fmt;
 use std::io;
 use std::string::FromUtf8Error;
 use serde_ini::de;
+use thiserror::Error;
 
-#[derive(Debug)]
+#[derive(Error, Debug)]
 pub enum Error {
-    Database(lmdb::Error),
+    #[error("database error: {0}")]
+    Database(#[from] lmdb::Error),
+    #[error("unsupported LMDB binary format")]
     UnsupportedVersion,
+    #[error("failed to obtain current time")]
     Time,
-    NonAscii(FromUtf8Error),
+    #[error("non-ascii characters in conversion: {0}")]
+    NonAscii(#[from] FromUtf8Error),
+    #[error("unknown transport protocol: {0}")]
     UnknownTransportProtocol(String),
+    #[error("unknown diff criteria: {0}")]
     UnknownDiffCriteria(String),
+    #[error("unknown field weight: {0}")]
     UnknownFieldWeight(String),
+    #[error("failed to open config file: {0}")]
     ConfigFile(io::Error),
+    #[error("failed to parse config file: {0}")]
     ConfigRead(de::Error),
+    #[error("functionality not yet implemented")]
     NotImplemented,
-}
-
-impl fmt::Display for Error {
-    fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
-        match &self {
-            Error::Database(e) => write!(fmt, "database error: {}", e),
-            Error::UnsupportedVersion => write!(fmt, "unsupported LMDB binary format"),
-            Error::Time => write!(fmt, "failed to obtain current time"),
-            Error::NonAscii(e) => write!(fmt, "non-ascii characters in conversion: {}", e),
-            Error::UnknownTransportProtocol(s) => write!(fmt, "unknown transport protocol: {}", s),
-            Error::UnknownDiffCriteria(s) => write!(fmt, "unknown diff criteria: {}", s),
-            Error::UnknownFieldWeight(s) => write!(fmt, "unknown field weight: {}", s),
-            Error::ConfigFile(e) => write!(fmt, "config file error: {}", e),
-            Error::ConfigRead(e) => write!(fmt, "failed to read config: {}", e),
-            Error::NotImplemented => write!(fmt, "functionality not yet implemented"),
-        }
-    }
 }
 
 impl PartialEq for Error {
@@ -54,17 +48,3 @@ impl PartialEq for Error {
     }
 }
 impl Eq for Error {}
-
-impl std::error::Error for Error {}
-
-impl From<lmdb::Error> for Error {
-    fn from(error: lmdb::Error) -> Self {
-        Error::Database(error)
-    }
-}
-
-impl From<FromUtf8Error> for Error {
-    fn from(error: FromUtf8Error) -> Self {
-        Error::NonAscii(error)
-    }
-}
