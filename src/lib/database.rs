@@ -131,13 +131,14 @@ pub mod answersdb {
     use crate::error::DbFormatError;
     pub const NAME: &str = "answers";
 
-    #[derive(Debug, PartialEq, Eq)]
+    #[derive(Debug, PartialEq, Eq, Clone)]
     pub enum ServerReply {
         Timeout,
         Malformed,
         Data(DnsReply),
     }
 
+    #[derive(Clone)]
     pub struct DnsReply {
         pub delay: Duration,
         pub message: Message<Vec<u8>>,
@@ -158,29 +159,65 @@ pub mod answersdb {
         }
     }
 
-    impl TryFrom<&[u8]> for ServerReply {
+    #[derive(Debug, PartialEq, Eq)]
+    pub struct ServerReplyList {
+        pub key: u32,
+        pub replies: Vec<ServerReply>,
+    }
+
+    impl TryFrom<(&[u8], &[u8])> for ServerReplyList {
         type Error = DbFormatError;
 
-        fn try_from(buf: &[u8]) -> Result<Self, Self::Error> {
-            if buf.len() < 6 {
-                return Err(DbFormatError::ReplyMissingData);
+        fn try_from(item: (&[u8], &[u8])) -> Result<Self, Self::Error> {
+            let mut replies: Vec<ServerReply> = vec![];
+            let (key, buf) = item;
+            if key.len() != 4 {
+                return Err(DbFormatError::ReplyInvalidData);
             }
-            let delay = LittleEndian::read_u32(&buf[0..4]);
-            if delay == u32::MAX {
-                return Ok(Self::Timeout);
+
+            let mut i = 0;
+            while (i + 6) <= buf.len() {
+                let delay = LittleEndian::read_u32(&buf[i..i+4]);
+                i += 4;
+                let len = LittleEndian::read_u16(&buf[i..i+2]) as usize;
+                i += 2;
+
+                if delay == u32::MAX {
+                    if len != 0 {
+                        return Err(DbFormatError::ReplyInvalidData);
+                    } else {
+                        replies.push(ServerReply::Timeout);
+                        continue;
+                    }
+                }
+
+                if i + len > buf.len() {
+                    return Err(DbFormatError::ReplyMissingData);
+                }
+
+                let wire: Vec<u8> = Vec::from(&buf[i..i+len]);
+                i += len;
+
+                match Message::from_octets(wire) {
+                    Ok(msg) => {
+                        replies.push(ServerReply::Data(DnsReply {
+                            delay: Duration::from_micros(delay as u64),
+                            message: msg,
+                        }));
+                    },
+                    Err(_) => {
+                        replies.push(ServerReply::Malformed);
+                    }
+                }
             }
-            let len = LittleEndian::read_u16(&buf[4..6]);
-            if len as usize + 6 != buf.len() {
-                return Err(DbFormatError::ReplyMissingData);
-            }
-            let wire: Vec<u8> = Vec::from(&buf[6..]);
-            if let Ok(msg) = Message::from_octets(wire) {
-                Ok(Self::Data(DnsReply {
-                    delay: Duration::from_micros(delay as u64),
-                    message: msg,
-                }))
+
+            if i == buf.len() {
+                return Ok(ServerReplyList{
+                    key: LittleEndian::read_u32(&key),
+                    replies: replies,
+                });
             } else {
-                Ok(Self::Malformed)
+                Err(DbFormatError::ReplyMissingData)
             }
         }
     }
@@ -228,27 +265,75 @@ mod tests {
     }
 
     #[test]
-    fn parse_serverreply() {
-        use answersdb::{ServerReply, DnsReply};
+    fn parse_serverreplylist() {
+        use answersdb::{ServerReplyList, ServerReply, DnsReply};
         use domain::base::Message;
         use std::time::Duration;
 
+        let key = vec![0x42, 0x00, 0x00, 0x00];
         let empty = vec![];
-        assert_eq!(ServerReply::try_from(empty.as_slice()), Err(DbFormatError::ReplyMissingData.into()));
+        assert_eq!(
+            ServerReplyList::try_from((key.as_slice(), empty.as_slice())),
+            Ok(ServerReplyList{
+                key: 0x42,
+                replies: vec![]
+            }));
+
         let timeout = vec![0xff, 0xff, 0xff, 0xff, 0x00, 0x00];
-        assert_eq!(ServerReply::try_from(timeout.as_slice()), Ok(ServerReply::Timeout));
+        assert_eq!(
+            ServerReplyList::try_from((key.as_slice(), timeout.as_slice())),
+            Ok(ServerReplyList {
+                key: 0x42,
+                replies: vec![
+                    ServerReply::Timeout,
+                ],
+            }));
+
         let missingdata = vec![0x00, 0x00, 0x00, 0x00, 0x01, 0x00];
-        assert_eq!(ServerReply::try_from(missingdata.as_slice()), Err(DbFormatError::ReplyMissingData.into()));
+        assert_eq!(
+            ServerReplyList::try_from((key.as_slice(), missingdata.as_slice())),
+            Err(DbFormatError::ReplyMissingData.into()));
+
         let shortdata = vec![0x00, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00];
-        assert_eq!(ServerReply::try_from(shortdata.as_slice()), Ok(ServerReply::Malformed));
+        assert_eq!(
+            ServerReplyList::try_from((key.as_slice(), shortdata.as_slice())),
+            Ok(ServerReplyList {
+                key: 0x42,
+                replies: vec![ServerReply::Malformed],
+            }));
+
         let wire = vec![0x01, 0x02, 0x03, 0x04, 0x05, 0x06,
                         0x07, 0x08, 0x09, 0x0a, 0x0b, 0x0c];
-        let mut okheader = vec![0x00, 0x00, 0x00, 0x00, 0x0c, 0x00];
-        okheader.append(&mut wire.to_owned());
+        let header = vec![0x00, 0x00, 0x00, 0x00, 0x0c, 0x00];
+        let mut data = header.to_owned();
+        data.append(&mut wire.to_owned());
         let dnsreply = DnsReply {
             delay: Duration::from_micros(0),
-            message: Message::from_octets(wire).unwrap(),
+            message: Message::from_octets(wire.to_owned()).unwrap(),
         };
-        assert_eq!(ServerReply::try_from(okheader.as_slice()), Ok(ServerReply::Data(dnsreply)));
+        assert_eq!(
+            ServerReplyList::try_from((key.as_slice(), data.as_slice())),
+            Ok(ServerReplyList {
+                key: 0x42,
+                replies: vec![ServerReply::Data(dnsreply.to_owned())],
+            }));
+
+        data.append(&mut timeout.to_owned());
+        let header3 = vec![0x01, 0x00, 0x00, 0x00, 0x0c, 0x00];
+        data.append(&mut header3.to_owned());
+        data.append(&mut wire.to_owned());
+        assert_eq!(
+            ServerReplyList::try_from((key.as_slice(), data.as_slice())),
+            Ok(ServerReplyList {
+                key: 0x42,
+                replies: vec![
+                    ServerReply::Data(dnsreply.to_owned()),
+                    ServerReply::Timeout,
+                    ServerReply::Data(DnsReply {
+                        delay: Duration::from_micros(1),
+                        message: Message::from_octets(wire.to_owned()).unwrap(),
+                    }),
+                ],
+            }));
     }
 }

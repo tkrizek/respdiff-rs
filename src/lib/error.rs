@@ -1,5 +1,4 @@
 use lmdb;
-use std::fmt;
 use std::io;
 use std::string::FromUtf8Error;
 use serde_ini::de;
@@ -61,4 +60,6 @@ pub enum DbFormatError {
     Unsupported,
     #[error("reply in answers db is missing data")]
     ReplyMissingData,
+    #[error("reply in answers db contains invalid data")]
+    ReplyInvalidData,
 }
