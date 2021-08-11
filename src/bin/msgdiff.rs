@@ -8,7 +8,7 @@ use std::path::PathBuf;
 use clap::{Arg, App};
 use lmdb::{Cursor, Transaction};
 use log::error;
-use respdiff::{self, config::Config, database::{self, answersdb::ServerReplyList}};
+use respdiff::{self, config::Config, database::{self, answersdb::ServerReplyList}, matcher::{self, Field}};
 use serde_ini;
 
 struct Args {
@@ -77,7 +77,14 @@ fn msgdiff() -> Result<(), Box<dyn Error>> {
             }
         });
         for i in iter {
-            println!("key: {}", i??.key);
+            let data = i??;
+            let replies = data.replies;
+            if replies.len() >= 2 {
+                let diff = matcher::compare(&replies[0], &replies[1], &vec![Field::Opcode, Field::Rcode]);
+                if diff.len() > 0 {
+                    println!("{} -> {:?}", data.key, diff);
+                }
+            }
         }
     }
 
