@@ -1,4 +1,5 @@
 use std::collections::HashSet;
+use std::convert::From;
 use crate::database::answersdb::{DnsReply, ServerReply};  // TODO weird location
 use domain::base::iana;
 
@@ -8,6 +9,7 @@ pub enum Field {
     Malformed,
     Opcode,
     Rcode,
+    Flags,
     // TODO other fields
 }
 
@@ -32,10 +34,91 @@ impl Matcher for Field {
                     return Some(Mismatch::Rcode(expected, got));
                 }
             },
+            Field::Flags => {
+                let expected: Flags = expected.message.header().into();
+                let got: Flags = got.message.header().into();
+                if expected != got {
+                    return Some(Mismatch::Flags(expected, got));
+                }
+            },
             Field::Timeout => {},
             Field::Malformed => {},
         }
         None
+    }
+}
+
+#[derive(Default, Eq, PartialEq, Copy, Clone, Debug, Hash)]
+pub struct Flags {
+    qr: bool,
+    aa: bool,
+    tc: bool,
+    rd: bool,
+    ra: bool,
+    ad: bool,
+    cd: bool,
+}
+
+impl From<domain::base::Header> for Flags {
+    fn from(header: domain::base::Header) -> Flags {
+        Flags {
+            qr: header.qr(),
+            aa: header.aa(),
+            tc: header.tc(),
+            rd: header.rd(),
+            ra: header.ra(),
+            ad: header.ad(),
+            cd: header.cd(),
+        }
+    }
+}
+
+impl From<&str> for Flags {
+    fn from(repr: &str) -> Flags {
+        let mut flags: Flags = Default::default();
+        let tokens: Vec<String> = repr.split(' ').map(|x| x.to_uppercase()).collect();
+        for token in tokens {
+            let token: &str = &token;
+            match token {
+                "QR" => flags.qr = true,
+                "AA" => flags.aa = true,
+                "TC" => flags.tc = true,
+                "RD" => flags.rd = true,
+                "RA" => flags.ra = true,
+                "AD" => flags.ad = true,
+                "CD" => flags.cd = true,
+                _ => {},
+            }
+        }
+        flags
+    }
+}
+
+impl From<Flags> for String {
+    fn from(flags: Flags) -> String {
+        let mut tokens = vec![];
+        if flags.qr {
+            tokens.push("QR");
+        }
+        if flags.aa {
+            tokens.push("AA");
+        }
+        if flags.tc {
+            tokens.push("TC");
+        }
+        if flags.rd {
+            tokens.push("RD");
+        }
+        if flags.ra {
+            tokens.push("RA");
+        }
+        if flags.ad {
+            tokens.push("AD");
+        }
+        if flags.cd {
+            tokens.push("CD");
+        }
+        tokens.join(" ")
     }
 }
 
@@ -48,6 +131,7 @@ pub enum Mismatch {
     MalformedBoth,
     Opcode(iana::opcode::Opcode, iana::opcode::Opcode),
     Rcode(iana::rcode::Rcode, iana::rcode::Rcode),
+    Flags(Flags, Flags),
 }
 
 pub fn compare(
@@ -98,6 +182,29 @@ mod tests {
             delay: Duration::from_micros(0),
             message: MessageBuilder::new_vec().into_message(),
         })
+    }
+
+    #[test]
+    fn flags_str() {
+        let flags = Flags {
+            qr: true,
+            ..Default::default()
+        };
+        let repr = "QR";
+        assert_eq!(repr, String::from(flags));
+        assert_eq!(Flags::from(repr), flags);
+        let flags = Flags {
+            qr: true,
+            aa: true,
+            tc: true,
+            rd: true,
+            ra: true,
+            ad: true,
+            cd: true,
+        };
+        let repr = "QR AA TC RD RA AD CD";
+        assert_eq!(repr, String::from(flags));
+        assert_eq!(Flags::from(repr), flags);
     }
 
     #[test]
@@ -199,4 +306,21 @@ mod tests {
         assert!(res.contains(&Mismatch::Rcode(NoError, ServFail)));
     }
 
+    #[test]
+    fn compare_flags() {
+        let crit = vec![Field::Flags];
+        let r1 = &reply_noerror();
+        let res = compare(r1, r1, &crit);
+        assert_eq!(res.len(), 0);
+
+        let r2 = &mut r1.to_owned();
+        if let ServerReply::Data(ref mut dns) = r2 {
+            dns.message.header_mut().set_aa(true);
+        };
+        let res = compare(r1, r2, &crit);
+        assert_eq!(res.len(), 1);
+        assert!(res.contains(&Mismatch::Flags(
+            "".into(),
+            "AA".into())));
+    }
 }
