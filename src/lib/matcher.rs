@@ -1,7 +1,7 @@
 use std::collections::HashSet;
 use std::convert::From;
 use crate::database::answersdb::{DnsReply, ServerReply};  // TODO weird location
-use domain::base::iana;
+use domain::base::{iana, Question};
 
 #[derive(Debug, PartialEq, Eq, Copy, Clone, Hash)]
 pub enum Field {
@@ -10,6 +10,7 @@ pub enum Field {
     Opcode,
     Rcode,
     Flags,
+    Question,
     // TODO other fields
 }
 
@@ -39,6 +40,29 @@ impl Matcher for Field {
                 let got: Flags = got.message.header().into();
                 if expected != got {
                     return Some(Mismatch::Flags(expected, got));
+                }
+            },
+            Field::Question => {
+                let mut exp_qs = Vec::new();
+                let mut got_qs = Vec::new();
+                for q in expected.message.question() {
+                    match q {
+                        Ok(q) => exp_qs.push(q.to_string()),
+                        Err(_) => return Some(Mismatch::MalformedExpected),
+                    }
+                }
+                for q in got.message.question() {
+                    match q {
+                        Ok(q) => got_qs.push(q.to_string()),
+                        Err(_) => return Some(Mismatch::MalformedGot),
+                    }
+                }
+                exp_qs.sort_unstable();
+                got_qs.sort_unstable();
+                if expected != got {
+                    return Some(Mismatch::Question(
+                        format!("{:?}", exp_qs),
+                        format!("{:?}", got_qs)));
                 }
             },
             Field::Timeout => {},
@@ -122,7 +146,7 @@ impl From<Flags> for String {
     }
 }
 
-#[derive(Debug, PartialEq, Eq, Copy, Clone, Hash)]
+#[derive(Debug, PartialEq, Eq, Clone, Hash)]
 pub enum Mismatch {
     TimeoutExpected,
     TimeoutGot,
@@ -132,6 +156,7 @@ pub enum Mismatch {
     Opcode(iana::opcode::Opcode, iana::opcode::Opcode),
     Rcode(iana::rcode::Rcode, iana::rcode::Rcode),
     Flags(Flags, Flags),
+    Question(String, String),
 }
 
 pub fn compare(
@@ -323,4 +348,6 @@ mod tests {
             "".into(),
             "AA".into())));
     }
+
+    // TODO compare_question
 }
