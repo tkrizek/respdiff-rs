@@ -1,7 +1,7 @@
 use std::collections::HashSet;
 use std::convert::From;
 use crate::database::answersdb::{DnsReply, ServerReply};  // TODO weird location
-use domain::base::{iana, Question};
+use domain::base::{iana, name::{Dname, ToDname}, question::Question};
 
 #[derive(Debug, PartialEq, Eq, Copy, Clone, Hash)]
 pub enum Field {
@@ -43,26 +43,42 @@ impl Matcher for Field {
                 }
             },
             Field::Question => {
-                let mut exp_qs = Vec::new();
-                let mut got_qs = Vec::new();
-                for q in expected.message.question() {
-                    match q {
-                        Ok(q) => exp_qs.push(q.to_string()),
-                        Err(_) => return Some(Mismatch::MalformedExpected),
+                let expected = {
+                    if expected.message.question().count() != 1 {
+                        return Some(Mismatch::QuestionCount);
                     }
-                }
-                for q in got.message.question() {
-                    match q {
-                        Ok(q) => got_qs.push(q.to_string()),
-                        Err(_) => return Some(Mismatch::MalformedGot),
+                    if let Some(q) = expected.message.question().next() {
+                        match q {
+                            Ok(q) => Question::new(
+                                q.qname().to_vec(),
+                                q.qtype(),
+                                q.qclass(),
+                            ),
+                            Err(_) => return Some(Mismatch::MalformedExpected),
+                        }
+                    } else {
+                        return Some(Mismatch::QuestionCount);
                     }
-                }
-                exp_qs.sort_unstable();
-                got_qs.sort_unstable();
+                };
+                let got = {
+                    if got.message.question().count() != 1 {
+                        return Some(Mismatch::QuestionCount);
+                    }
+                    if let Some(q) = got.message.question().into_iter().next() {
+                        match q {
+                            Ok(q) => Question::new(
+                                q.qname().to_vec(),
+                                q.qtype(),
+                                q.qclass(),
+                            ),
+                            Err(_) => return Some(Mismatch::MalformedExpected),
+                        }
+                    } else {
+                        return Some(Mismatch::QuestionCount);
+                    }
+                };
                 if expected != got {
-                    return Some(Mismatch::Question(
-                        format!("{:?}", exp_qs),
-                        format!("{:?}", got_qs)));
+                    return Some(Mismatch::Question(expected, got));
                 }
             },
             Field::Timeout => {},
@@ -156,7 +172,8 @@ pub enum Mismatch {
     Opcode(iana::opcode::Opcode, iana::opcode::Opcode),
     Rcode(iana::rcode::Rcode, iana::rcode::Rcode),
     Flags(Flags, Flags),
-    Question(String, String),
+    QuestionCount,
+    Question(Question<Dname<Vec<u8>>>, Question<Dname<Vec<u8>>>),
 }
 
 pub fn compare(
@@ -199,13 +216,17 @@ pub fn compare(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use domain::base::MessageBuilder;
+    use domain::base::{Message, MessageBuilder, iana::rtype::Rtype};
     use std::time::Duration;
 
     fn reply_noerror() -> ServerReply {
+        reply_from_msg(MessageBuilder::new_vec().into_message())
+    }
+
+    fn reply_from_msg(message: Message<Vec<u8>>) -> ServerReply {
         ServerReply::Data(DnsReply{
             delay: Duration::from_micros(0),
-            message: MessageBuilder::new_vec().into_message(),
+            message: message,
         })
     }
 
@@ -349,5 +370,24 @@ mod tests {
             "AA".into())));
     }
 
-    // TODO compare_question
+    #[test]
+    fn compare_question() {
+        let crit = vec![Field::Question];
+        let mut msg1 = MessageBuilder::new_vec().question();
+        msg1.push(Question::new_in(Dname::root_vec(), Rtype::A)).unwrap();
+        let r1 = &reply_from_msg(msg1.into_message());
+        let res = compare(r1, r1, &crit);
+        assert_eq!(res.len(), 0);
+
+        let mut msg2 = MessageBuilder::new_vec().question();
+        msg2.push(Question::new_in(Dname::root_vec(), Rtype::Aaaa)).unwrap();
+        let r2 = &reply_from_msg(msg2.into_message());
+
+        let res = compare(r1, r2, &crit);
+        assert_eq!(res.len(), 1);
+        assert!(res.contains(&Mismatch::Question(
+            Question::new_in(Dname::root_vec(), Rtype::A),
+            Question::new_in(Dname::root_vec(), Rtype::Aaaa),
+            )));
+    }
 }
