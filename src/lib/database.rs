@@ -123,11 +123,12 @@ pub mod queriesdb {
 }
 
 pub mod answersdb {
+    use std::collections::BTreeSet;
     use std::convert::TryFrom;
     use std::time::Duration;
     use std::fmt;
     use byteorder::{ByteOrder, LittleEndian};
-    use domain::base::Message;
+    use domain::base::{iana::rtype::Rtype, Message, octets::ParseError};
     use crate::error::DbFormatError;
     pub const NAME: &str = "answers";
 
@@ -142,6 +143,19 @@ pub mod answersdb {
     pub struct DnsReply {
         pub delay: Duration,
         pub message: Message<Vec<u8>>,
+    }
+    impl DnsReply {
+        /// Return list of unique non-RRSIG record types present in answer.
+        pub fn answer_rtypes(&self) -> Result<BTreeSet<Rtype>, ParseError> {
+            let mut rtypes = BTreeSet::new();
+            for a in self.message.answer()? {
+                let rtype = a?.rtype();
+                if rtype != Rtype::Rrsig {
+                    rtypes.insert(rtype);
+                }
+            }
+            Ok(rtypes)
+        }
     }
     impl PartialEq for DnsReply {
         fn eq(&self, other: &Self) -> bool {

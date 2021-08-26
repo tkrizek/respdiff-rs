@@ -1,4 +1,4 @@
-use std::collections::HashSet;
+use std::collections::{BTreeSet, HashSet};
 use std::convert::From;
 use crate::database::answersdb::{DnsReply, ServerReply};  // TODO weird location
 use domain::base::{iana, name::{Dname, ToDname}, question::Question};
@@ -11,6 +11,7 @@ pub enum Field {
     Rcode,
     Flags,
     Question,
+    AnswerTypes,
     // TODO other fields
 }
 
@@ -79,6 +80,19 @@ impl Matcher for Field {
                 };
                 if expected != got {
                     return Some(Mismatch::Question(expected, got));
+                }
+            },
+            Field::AnswerTypes => {
+                let expected = match expected.answer_rtypes() {
+                    Ok(val) => val,
+                    Err(_) => return Some(Mismatch::MalformedExpected),
+                };
+                let got = match got.answer_rtypes() {
+                    Ok(val) => val,
+                    Err(_) => return Some(Mismatch::MalformedGot),
+                };
+                if expected != got {
+                    return Some(Mismatch::AnswerTypes(expected, got));
                 }
             },
             Field::Timeout => {},
@@ -174,6 +188,7 @@ pub enum Mismatch {
     Flags(Flags, Flags),
     QuestionCount,
     Question(Question<Dname<Vec<u8>>>, Question<Dname<Vec<u8>>>),
+    AnswerTypes(BTreeSet<iana::rtype::Rtype>, BTreeSet<iana::rtype::Rtype>),
 }
 
 pub fn compare(
@@ -388,6 +403,37 @@ mod tests {
         assert!(res.contains(&Mismatch::Question(
             Question::new_in(Dname::root_vec(), Rtype::A),
             Question::new_in(Dname::root_vec(), Rtype::Aaaa),
+            )));
+    }
+
+    #[test]
+    fn compare_answertypes() {
+        use domain::rdata::{A, Aaaa};
+        use domain::base::iana::rtype::Rtype;
+        use std::net::Ipv6Addr;
+
+        let crit = vec![Field::AnswerTypes];
+        let mut msg1 = MessageBuilder::new_vec().answer();
+        msg1.push((Dname::root_ref(), 86400, A::from_octets(192, 0, 2, 1))).unwrap();
+        let r1 = &reply_from_msg(msg1.into_message());
+        let res = compare(r1, r1, &crit);
+        assert_eq!(res.len(), 0);
+
+        let mut msg2 = MessageBuilder::new_vec().answer();
+        msg2.push((Dname::vec_from_str("test.").unwrap(), 3600, A::from_octets(192, 0, 2, 2))).unwrap();
+        msg2.push((Dname::vec_from_str("test.").unwrap(), 3600, A::from_octets(192, 0, 2, 3))).unwrap();
+        let r2 = &reply_from_msg(msg2.into_message());
+        let res = compare(r1, r2, &crit);
+        assert_eq!(res.len(), 0);  // ensure only rtype is compared and repetition doesn't matter
+
+        let mut msg3 = MessageBuilder::new_vec().answer();
+        msg3.push((Dname::root_ref(), 86400, Aaaa::new(Ipv6Addr::LOCALHOST))).unwrap();
+        let r3 = &reply_from_msg(msg3.into_message());
+        let res = compare(r2, r3, &crit);
+        assert_eq!(res.len(), 1);
+        assert!(res.contains(&Mismatch::AnswerTypes(
+            BTreeSet::from([Rtype::A]),
+            BTreeSet::from([Rtype::Aaaa]),
             )));
     }
 }
