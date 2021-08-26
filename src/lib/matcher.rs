@@ -12,7 +12,7 @@ pub enum Field {
     Flags,
     Question,
     AnswerTypes,
-    // TODO other fields
+    AnswerRrsigTypes,
 }
 
 trait Matcher {
@@ -93,6 +93,19 @@ impl Matcher for Field {
                 };
                 if expected != got {
                     return Some(Mismatch::AnswerTypes(expected, got));
+                }
+            },
+            Field::AnswerRrsigTypes => {
+                let expected = match expected.answer_rrsig_covered() {
+                    Ok(val) => val,
+                    Err(_) => return Some(Mismatch::MalformedExpected),
+                };
+                let got = match got.answer_rrsig_covered() {
+                    Ok(val) => val,
+                    Err(_) => return Some(Mismatch::MalformedGot),
+                };
+                if expected != got {
+                    return Some(Mismatch::AnswerRrsigTypes(expected, got));
                 }
             },
             Field::Timeout => {},
@@ -189,6 +202,7 @@ pub enum Mismatch {
     QuestionCount,
     Question(Question<Dname<Vec<u8>>>, Question<Dname<Vec<u8>>>),
     AnswerTypes(BTreeSet<iana::rtype::Rtype>, BTreeSet<iana::rtype::Rtype>),
+    AnswerRrsigTypes(BTreeSet<iana::rtype::Rtype>, BTreeSet<iana::rtype::Rtype>),
 }
 
 pub fn compare(
@@ -434,6 +448,40 @@ mod tests {
         assert!(res.contains(&Mismatch::AnswerTypes(
             BTreeSet::from([Rtype::A]),
             BTreeSet::from([Rtype::Aaaa]),
+            )));
+    }
+
+    #[test]
+    fn compare_answerrrsigtypes() {
+        use domain::rdata::{A, Rrsig};
+        use domain::base::iana::rtype::Rtype;
+
+        let crit = vec![Field::AnswerRrsigTypes];
+        let mut msg1 = MessageBuilder::new_vec().answer();
+        msg1.push((Dname::root_ref(), 86400, A::from_octets(192, 0, 2, 1))).unwrap();
+        msg1.push((Dname::root_ref(), 86400, Rrsig::new(
+            Rtype::Txt,
+            domain::base::iana::secalg::SecAlg::EcdsaP384Sha384,
+            1,
+            1,
+            domain::base::serial::Serial::now(),
+            domain::base::serial::Serial::now(),
+            1,
+            Dname::root_ref(),
+            &[0],
+            ))).unwrap();
+        let r1 = &reply_from_msg(msg1.into_message());
+        let res = compare(r1, r1, &crit);
+        assert_eq!(res.len(), 0);
+
+        let mut msg2 = MessageBuilder::new_vec().answer();
+        msg2.push((Dname::vec_from_str("test.").unwrap(), 3600, A::from_octets(192, 0, 2, 2))).unwrap();
+        let r2 = &reply_from_msg(msg2.into_message());
+        let res = compare(r1, r2, &crit);
+        assert_eq!(res.len(), 1);
+        assert!(res.contains(&Mismatch::AnswerRrsigTypes(
+            BTreeSet::from([Rtype::Txt]),
+            BTreeSet::from([]),
             )));
     }
 }

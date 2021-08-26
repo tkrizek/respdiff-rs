@@ -129,6 +129,7 @@ pub mod answersdb {
     use std::fmt;
     use byteorder::{ByteOrder, LittleEndian};
     use domain::base::{iana::rtype::Rtype, Message, octets::ParseError};
+    use domain::rdata::Rrsig;
     use crate::error::DbFormatError;
     pub const NAME: &str = "answers";
 
@@ -148,13 +149,26 @@ pub mod answersdb {
         /// Return list of unique non-RRSIG record types present in answer.
         pub fn answer_rtypes(&self) -> Result<BTreeSet<Rtype>, ParseError> {
             let mut rtypes = BTreeSet::new();
-            for a in self.message.answer()? {
-                let rtype = a?.rtype();
+            for rr in self.message.answer()? {
+                let rtype = rr?.rtype();
                 if rtype != Rtype::Rrsig {
                     rtypes.insert(rtype);
                 }
             }
             Ok(rtypes)
+        }
+        /// Return list of unique types that are covered by any RRSIG in answer.
+        pub fn answer_rrsig_covered(&self) -> Result<BTreeSet<Rtype>, ParseError> {
+            let mut covered = BTreeSet::new();
+            for rr in self.message.answer()? {
+                let rr = rr?;
+                if rr.rtype() == Rtype::Rrsig {
+                    if let Some(sig) = rr.into_record::<Rrsig<_, _>>()? {
+                        covered.insert(sig.data().type_covered());
+                    }
+                }
+            }
+            Ok(covered)
         }
     }
     impl PartialEq for DnsReply {
