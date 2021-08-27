@@ -1,5 +1,6 @@
 extern crate lmdb;
 
+use std::collections::BTreeMap;
 use std::convert::TryFrom;
 use std::error::Error;
 use std::fs::File;
@@ -8,6 +9,7 @@ use std::path::PathBuf;
 use clap::{Arg, App};
 use lmdb::{Cursor, Transaction};
 use log::error;
+use rayon::prelude::*;
 use respdiff::{self, config::Config, database::{self, answersdb::ServerReplyList}, matcher::{self, Field}};
 use serde_ini;
 
@@ -70,21 +72,44 @@ fn msgdiff() -> Result<(), Box<dyn Error>> {
         let txn = env.begin_ro_txn()?;
         let mut cur = txn.open_ro_cursor(adb)?;
 
-        let iter = cur.iter().map(|res| {
+        let reply_lists: Vec<_>= cur.iter().map(|res| {
             match res {
-                Ok(item) => Ok(ServerReplyList::try_from(item)),
-                Err(e) => Err(respdiff::Error::Database(e)),
-            }
-        });
-        for i in iter {
-            let data = i??;
-            let replies = data.replies;
-            if replies.len() >= 2 {
-                let diff = matcher::compare(&replies[0], &replies[1], &vec![Field::Opcode, Field::Rcode]);
-                if diff.len() > 0 {
-                    println!("{} -> {:?}", data.key, diff);
+                Ok(item) => {
+                    match ServerReplyList::try_from(item) {
+                        Ok(reply_list) => reply_list,
+                        Err(e) => {
+                            error!("{}", e);
+                            std::process::exit(1);
+                        }
+                    }
+                },
+                Err(e) => {
+                    error!("{}", respdiff::Error::Database(e));
+                    std::process::exit(1);
                 }
             }
+        }).collect();
+        let diffs: BTreeMap<_, _> = reply_lists.par_iter().filter_map(|reply_list| {
+            if reply_list.replies.len() >= 2 {
+                let diff = matcher::compare(
+                    &reply_list.replies[0],
+                    &reply_list.replies[1],
+                    &vec![
+                        Field::Opcode,
+                        Field::Rcode,
+                        Field::Flags,
+                        Field::Question,
+                        Field::AnswerTypes,
+                        Field::AnswerRrsigTypes
+                ]);
+                if diff.len() > 0 {
+                    return Some((reply_list.key, diff));
+                }
+            }
+            None
+        }).collect();
+        for (key, diff) in diffs {
+            println!("{} -> {:?}", key, diff);
         }
     }
 

@@ -24,6 +24,7 @@ serde_ini = "0.2.0"
 clap = "2"
 domain = "0.6"
 thiserror = "1.0"
+rayon = "1.5"
 
 [dev-dependencies]
 tempdir = "0.3"
