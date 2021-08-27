@@ -50,11 +50,7 @@ impl Matcher for Field {
                     }
                     if let Some(q) = expected.message.question().next() {
                         match q {
-                            Ok(q) => Question::new(
-                                q.qname().to_vec(),
-                                q.qtype(),
-                                q.qclass(),
-                            ),
+                            Ok(q) => q,
                             Err(_) => return Some(Mismatch::MalformedExpected),
                         }
                     } else {
@@ -67,19 +63,24 @@ impl Matcher for Field {
                     }
                     if let Some(q) = got.message.question().into_iter().next() {
                         match q {
-                            Ok(q) => Question::new(
-                                q.qname().to_vec(),
-                                q.qtype(),
-                                q.qclass(),
-                            ),
+                            Ok(q) => q,
                             Err(_) => return Some(Mismatch::MalformedExpected),
                         }
                     } else {
                         return Some(Mismatch::QuestionCount);
                     }
                 };
+
                 if expected != got {
-                    return Some(Mismatch::Question(expected, got));
+                    return Some(Mismatch::Question(
+                        Question::new(
+                            expected.qname().to_vec(),
+                            expected.qtype(),
+                            expected.qclass()),
+                        Question::new(
+                            got.qname().to_vec(),
+                            got.qtype(),
+                            got.qclass())));
                 }
             },
             Field::AnswerTypes => {
