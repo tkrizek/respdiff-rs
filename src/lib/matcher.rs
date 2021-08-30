@@ -1,10 +1,11 @@
+use serde::{Serialize, Deserialize};
 use std::collections::{BTreeSet, HashSet};
-use std::convert::From;
-use std::str::FromStr;
+use std::fmt;
 use crate::database::answersdb::{DnsReply, ServerReply};  // TODO weird location
 use domain::base::{iana, header::Flags, name::{Dname, ToDname}, question::Question};
 
-#[derive(Debug, PartialEq, Eq, Copy, Clone, Hash)]
+#[derive(Serialize, Deserialize, Debug, PartialEq, Eq, PartialOrd, Ord, Copy, Clone, Hash)]
+#[serde(rename_all = "lowercase")]
 pub enum Field {
     Timeout,
     Malformed,
@@ -238,6 +239,7 @@ mod tests {
     use super::*;
     use domain::base::{Message, MessageBuilder, iana::rtype::Rtype};
     use std::time::Duration;
+    use std::str::FromStr;
 
     fn reply_noerror() -> ServerReply {
         reply_from_msg(MessageBuilder::new_vec().into_message())

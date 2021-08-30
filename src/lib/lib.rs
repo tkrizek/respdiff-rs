@@ -2,6 +2,7 @@ use std::result;
 
 pub mod config;
 pub mod database;
+pub mod dataformat;
 pub mod matcher;
 
 mod error;
