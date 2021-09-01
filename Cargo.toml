@@ -22,7 +22,7 @@ env_logger = "0.9"
 serde = { version = "1.0", features = ["derive"] }
 serde_ini = "0.2.0"
 clap = "2"
-domain = "0.6"
+domain = { git = "https://github.com/NLnetLabs/domain.git", rev = "8d31cac" }
 thiserror = "1.0"
 rayon = "1.5"
 

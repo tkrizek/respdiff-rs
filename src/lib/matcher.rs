@@ -1,7 +1,8 @@
 use std::collections::{BTreeSet, HashSet};
 use std::convert::From;
+use std::str::FromStr;
 use crate::database::answersdb::{DnsReply, ServerReply};  // TODO weird location
-use domain::base::{iana, name::{Dname, ToDname}, question::Question};
+use domain::base::{iana, header::Flags, name::{Dname, ToDname}, question::Question};
 
 #[derive(Debug, PartialEq, Eq, Copy, Clone, Hash)]
 pub enum Field {
@@ -37,8 +38,8 @@ impl Matcher for Field {
                 }
             },
             Field::Flags => {
-                let expected: Flags = expected.message.header().into();
-                let got: Flags = got.message.header().into();
+                let expected: Flags = expected.message.header().flags();
+                let got: Flags = got.message.header().flags();
                 if expected != got {
                     return Some(Mismatch::Flags(expected, got));
                 }
@@ -116,80 +117,6 @@ impl Matcher for Field {
     }
 }
 
-#[derive(Default, Eq, PartialEq, Copy, Clone, Debug, Hash)]
-pub struct Flags {
-    qr: bool,
-    aa: bool,
-    tc: bool,
-    rd: bool,
-    ra: bool,
-    ad: bool,
-    cd: bool,
-}
-
-impl From<domain::base::Header> for Flags {
-    fn from(header: domain::base::Header) -> Flags {
-        Flags {
-            qr: header.qr(),
-            aa: header.aa(),
-            tc: header.tc(),
-            rd: header.rd(),
-            ra: header.ra(),
-            ad: header.ad(),
-            cd: header.cd(),
-        }
-    }
-}
-
-impl From<&str> for Flags {
-    fn from(repr: &str) -> Flags {
-        let mut flags: Flags = Default::default();
-        let tokens: Vec<String> = repr.split(' ').map(|x| x.to_uppercase()).collect();
-        for token in tokens {
-            let token: &str = &token;
-            match token {
-                "QR" => flags.qr = true,
-                "AA" => flags.aa = true,
-                "TC" => flags.tc = true,
-                "RD" => flags.rd = true,
-                "RA" => flags.ra = true,
-                "AD" => flags.ad = true,
-                "CD" => flags.cd = true,
-                _ => {},
-            }
-        }
-        flags
-    }
-}
-
-impl From<Flags> for String {
-    fn from(flags: Flags) -> String {
-        let mut tokens = vec![];
-        if flags.qr {
-            tokens.push("QR");
-        }
-        if flags.aa {
-            tokens.push("AA");
-        }
-        if flags.tc {
-            tokens.push("TC");
-        }
-        if flags.rd {
-            tokens.push("RD");
-        }
-        if flags.ra {
-            tokens.push("RA");
-        }
-        if flags.ad {
-            tokens.push("AD");
-        }
-        if flags.cd {
-            tokens.push("CD");
-        }
-        tokens.join(" ")
-    }
-}
-
 #[derive(Debug, PartialEq, Eq, Clone, Hash)]
 pub enum Mismatch {
     TimeoutExpected,
@@ -258,29 +185,6 @@ mod tests {
             delay: Duration::from_micros(0),
             message: message,
         })
-    }
-
-    #[test]
-    fn flags_str() {
-        let flags = Flags {
-            qr: true,
-            ..Default::default()
-        };
-        let repr = "QR";
-        assert_eq!(repr, String::from(flags));
-        assert_eq!(Flags::from(repr), flags);
-        let flags = Flags {
-            qr: true,
-            aa: true,
-            tc: true,
-            rd: true,
-            ra: true,
-            ad: true,
-            cd: true,
-        };
-        let repr = "QR AA TC RD RA AD CD";
-        assert_eq!(repr, String::from(flags));
-        assert_eq!(Flags::from(repr), flags);
     }
 
     #[test]
@@ -396,8 +300,8 @@ mod tests {
         let res = compare(r1, r2, &crit);
         assert_eq!(res.len(), 1);
         assert!(res.contains(&Mismatch::Flags(
-            "".into(),
-            "AA".into())));
+            Flags::from_str("").unwrap(),
+            Flags::from_str("AA").unwrap())));
     }
 
     #[test]
