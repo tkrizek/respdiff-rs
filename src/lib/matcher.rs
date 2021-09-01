@@ -133,6 +133,69 @@ pub enum Mismatch {
     AnswerRrsigTypes(BTreeSet<iana::rtype::Rtype>, BTreeSet<iana::rtype::Rtype>),
 }
 
+impl fmt::Display for Mismatch {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Mismatch::TimeoutExpected => {
+                write!(f, "timeout != answer")
+            },
+            Mismatch::TimeoutGot => {
+                write!(f, "answer != timeout")
+            },
+            Mismatch::MalformedExpected => {
+                write!(f, "malformed != answer")
+            },
+            Mismatch::MalformedGot => {
+                write!(f, "answer != malformed")
+            },
+            Mismatch::MalformedBoth => {
+                write!(f, "malformed != malformed")
+            },
+            Mismatch::QuestionCount => {
+                write!(f, "question != questions")
+            },
+            Mismatch::AnswerTypes(exp, got) => {
+                write!(f, "{} != {}",
+                    exp
+                        .iter()
+                        .map(|x| format!("{}", x))
+                        .collect::<Vec<String>>()
+                        .join(" "),
+                    got
+                        .iter()
+                        .map(|x| format!("{}", x))
+                        .collect::<Vec<String>>()
+                        .join(" "))
+            },
+            Mismatch::AnswerRrsigTypes(exp, got) => {
+                write!(f, "{} != {}",
+                    exp
+                        .iter()
+                        .map(|x| format!("RRSIG({})", x))
+                        .collect::<Vec<String>>()
+                        .join(" "),
+                    got
+                        .iter()
+                        .map(|x| format!("RRSIG({})", x))
+                        .collect::<Vec<String>>()
+                        .join(" "))
+            },
+            Mismatch::Opcode(exp, got) => {
+                write!(f, "{} != {}", exp, got)
+            },
+            Mismatch::Rcode(exp, got) => {
+                write!(f, "{} != {}", exp, got)
+            },
+            Mismatch::Flags(exp, got) => {
+                write!(f, "{} != {}", exp, got)
+            },
+            Mismatch::Question(exp, got) => {
+                write!(f, "{} != {}", exp, got)
+            },
+        }
+    }
+}
+
 pub fn compare(
     expected: &ServerReply,
     got: &ServerReply,
