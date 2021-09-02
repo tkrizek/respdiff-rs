@@ -88,10 +88,11 @@ pub enum DiffCriteria {
     Question,
     AnswerTypes,
     AnswerRrsigs,
-    Authority,
-    Additional,
-    Edns,
-    Nsid,
+    // FIXME these have not been implemented, since we don't use them
+    // Authority,
+    // Additional,
+    // Edns,
+    // Nsid,
 }
 
 impl TryFrom<&str> for DiffCriteria {
@@ -105,10 +106,10 @@ impl TryFrom<&str> for DiffCriteria {
             "question" => Ok(DiffCriteria::Question),
             "answertypes" => Ok(DiffCriteria::AnswerTypes),
             "answerrrsigs" => Ok(DiffCriteria::AnswerRrsigs),
-            "authority" => Ok(DiffCriteria::Authority),
-            "additional" => Ok(DiffCriteria::Additional),
-            "edns" => Ok(DiffCriteria::Edns),
-            "nsid" => Ok(DiffCriteria::Nsid),
+            //"authority" => Ok(DiffCriteria::Authority),
+            //"additional" => Ok(DiffCriteria::Additional),
+            //"edns" => Ok(DiffCriteria::Edns),
+            //"nsid" => Ok(DiffCriteria::Nsid),
             _ => Err(Error::UnknownDiffCriteria(value.to_string())),
         }
     }
