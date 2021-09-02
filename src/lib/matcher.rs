@@ -2,6 +2,7 @@ use serde::{Serialize, Deserialize};
 use std::collections::{BTreeSet, HashSet};
 use std::fmt;
 use crate::database::answersdb::{DnsReply, ServerReply};  // TODO weird location
+use crate::config::DiffCriteria;  // TODO move?
 use domain::base::{iana, header::Flags, name::{Dname, ToDname}, question::Question};
 
 #[derive(Serialize, Deserialize, Debug, PartialEq, Eq, PartialOrd, Ord, Copy, Clone, Hash)]
@@ -14,38 +15,38 @@ pub enum Field {
     Flags,
     Question,
     AnswerTypes,
-    AnswerRrsigTypes,
+    AnswerRrsigs,
 }
 
 trait Matcher {
     fn mismatch(&self, expected: &DnsReply, got: &DnsReply) -> Option<Mismatch>;
 }
 
-impl Matcher for Field {
+impl Matcher for DiffCriteria {
     fn mismatch(&self, expected: &DnsReply, got: &DnsReply) -> Option<Mismatch> {
         match self {
-            Field::Opcode => {
+            DiffCriteria::Opcode => {
                 let expected = expected.message.header().opcode();
                 let got = got.message.header().opcode();
                 if expected != got {
                     return Some(Mismatch::Opcode(expected, got));
                 }
             },
-            Field::Rcode => {
+            DiffCriteria::Rcode => {
                 let expected = expected.message.header().rcode();
                 let got = got.message.header().rcode();
                 if expected != got {
                     return Some(Mismatch::Rcode(expected, got));
                 }
             },
-            Field::Flags => {
+            DiffCriteria::Flags => {
                 let expected: Flags = expected.message.header().flags();
                 let got: Flags = got.message.header().flags();
                 if expected != got {
                     return Some(Mismatch::Flags(expected, got));
                 }
             },
-            Field::Question => {
+            DiffCriteria::Question => {
                 let expected = {
                     if expected.message.question().count() != 1 {
                         return Some(Mismatch::QuestionCount);
@@ -85,7 +86,7 @@ impl Matcher for Field {
                             got.qclass())));
                 }
             },
-            Field::AnswerTypes => {
+            DiffCriteria::AnswerTypes => {
                 let expected = match expected.answer_rtypes() {
                     Ok(val) => val,
                     Err(_) => return Some(Mismatch::MalformedExpected),
@@ -98,7 +99,7 @@ impl Matcher for Field {
                     return Some(Mismatch::AnswerTypes(expected, got));
                 }
             },
-            Field::AnswerRrsigTypes => {
+            DiffCriteria::AnswerRrsigs => {
                 let expected = match expected.answer_rrsig_covered() {
                     Ok(val) => val,
                     Err(_) => return Some(Mismatch::MalformedExpected),
@@ -108,11 +109,9 @@ impl Matcher for Field {
                     Err(_) => return Some(Mismatch::MalformedGot),
                 };
                 if expected != got {
-                    return Some(Mismatch::AnswerRrsigTypes(expected, got));
+                    return Some(Mismatch::AnswerRrsigs(expected, got));
                 }
             },
-            Field::Timeout => {},
-            Field::Malformed => {},
         }
         None
     }
@@ -131,7 +130,7 @@ pub enum Mismatch {
     QuestionCount,
     Question(Question<Dname<Vec<u8>>>, Question<Dname<Vec<u8>>>),
     AnswerTypes(BTreeSet<iana::rtype::Rtype>, BTreeSet<iana::rtype::Rtype>),
-    AnswerRrsigTypes(BTreeSet<iana::rtype::Rtype>, BTreeSet<iana::rtype::Rtype>),
+    AnswerRrsigs(BTreeSet<iana::rtype::Rtype>, BTreeSet<iana::rtype::Rtype>),
 }
 
 impl fmt::Display for Mismatch {
@@ -168,7 +167,7 @@ impl fmt::Display for Mismatch {
                         .collect::<Vec<String>>()
                         .join(" "))
             },
-            Mismatch::AnswerRrsigTypes(exp, got) => {
+            Mismatch::AnswerRrsigs(exp, got) => {
                 write!(f, "{} != {}",
                     exp
                         .iter()
@@ -200,7 +199,7 @@ impl fmt::Display for Mismatch {
 pub fn compare(
     expected: &ServerReply,
     got: &ServerReply,
-    criteria: &Vec<Field>,
+    criteria: &Vec<DiffCriteria>,
     ) -> HashSet<Mismatch>
 {
     let mut mismatches = HashSet::new();
@@ -223,8 +222,8 @@ pub fn compare(
             mismatches.insert(Mismatch::MalformedGot);
         },
         (&ServerReply::Data(ref expected), &ServerReply::Data(ref got)) => {
-            for field in criteria {
-                if let Some(mismatch) = field.mismatch(expected, got) {
+            for crit in criteria {
+                if let Some(mismatch) = crit.mismatch(expected, got) {
                     mismatches.insert(mismatch);
                 }
             }
@@ -266,7 +265,7 @@ mod tests {
         assert_eq!(res.len(), 1);
         assert!(res.contains(&Mismatch::TimeoutExpected));
 
-        let res = compare(&ServerReply::Timeout, &reply_noerror(), &vec![Field::Opcode]);
+        let res = compare(&ServerReply::Timeout, &reply_noerror(), &vec![DiffCriteria::Opcode]);
         assert_eq!(res.len(), 1);
         assert!(res.contains(&Mismatch::TimeoutExpected));
     }
@@ -291,7 +290,7 @@ mod tests {
     fn compare_opcode() {
         use iana::opcode::Opcode::*;
 
-        let crit = vec![Field::Opcode];
+        let crit = vec![DiffCriteria::Opcode];
         let r1 = &reply_noerror();
         let res = compare(r1, r1, &crit);
         assert_eq!(res.len(), 0);
@@ -313,7 +312,7 @@ mod tests {
     fn compare_rcode() {
         use iana::rcode::Rcode::*;
 
-        let crit = vec![Field::Rcode];
+        let crit = vec![DiffCriteria::Rcode];
         let r1 = &reply_noerror();
         let res = compare(r1, r1, &crit);
         assert_eq!(res.len(), 0);
@@ -345,7 +344,7 @@ mod tests {
 
         let res = compare(r1, r2, &vec![]);
         assert_eq!(res.len(), 0);
-        let res = compare(r1, r2, &vec![Field::Opcode, Field::Rcode]);
+        let res = compare(r1, r2, &vec![DiffCriteria::Opcode, DiffCriteria::Rcode]);
         assert_eq!(res.len(), 2);
         assert!(res.contains(&Mismatch::Opcode(Query, Status)));
         assert!(res.contains(&Mismatch::Rcode(NoError, ServFail)));
@@ -353,7 +352,7 @@ mod tests {
 
     #[test]
     fn compare_flags() {
-        let crit = vec![Field::Flags];
+        let crit = vec![DiffCriteria::Flags];
         let r1 = &reply_noerror();
         let res = compare(r1, r1, &crit);
         assert_eq!(res.len(), 0);
@@ -371,7 +370,7 @@ mod tests {
 
     #[test]
     fn compare_question() {
-        let crit = vec![Field::Question];
+        let crit = vec![DiffCriteria::Question];
         let mut msg1 = MessageBuilder::new_vec().question();
         msg1.push(Question::new_in(Dname::root_vec(), Rtype::A)).unwrap();
         let r1 = &reply_from_msg(msg1.into_message());
@@ -396,7 +395,7 @@ mod tests {
         use domain::base::iana::rtype::Rtype;
         use std::net::Ipv6Addr;
 
-        let crit = vec![Field::AnswerTypes];
+        let crit = vec![DiffCriteria::AnswerTypes];
         let mut msg1 = MessageBuilder::new_vec().answer();
         msg1.push((Dname::root_ref(), 86400, A::from_octets(192, 0, 2, 1))).unwrap();
         let r1 = &reply_from_msg(msg1.into_message());
@@ -426,7 +425,7 @@ mod tests {
         use domain::rdata::{A, Rrsig};
         use domain::base::iana::rtype::Rtype;
 
-        let crit = vec![Field::AnswerRrsigTypes];
+        let crit = vec![DiffCriteria::AnswerRrsigs];
         let mut msg1 = MessageBuilder::new_vec().answer();
         msg1.push((Dname::root_ref(), 86400, A::from_octets(192, 0, 2, 1))).unwrap();
         msg1.push((Dname::root_ref(), 86400, Rrsig::new(
@@ -449,7 +448,7 @@ mod tests {
         let r2 = &reply_from_msg(msg2.into_message());
         let res = compare(r1, r2, &crit);
         assert_eq!(res.len(), 1);
-        assert!(res.contains(&Mismatch::AnswerRrsigTypes(
+        assert!(res.contains(&Mismatch::AnswerRrsigs(
             BTreeSet::from([Rtype::Txt]),
             BTreeSet::from([]),
             )));

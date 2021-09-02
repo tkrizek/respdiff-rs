@@ -11,7 +11,7 @@ use clap::{Arg, App};
 use lmdb::{Cursor, Transaction};
 use log::error;
 use rayon::prelude::*;
-use respdiff::{self, config::Config, database::{self, answersdb::ServerReplyList}, matcher::{self, Field}};
+use respdiff::{self, config::Config, database::{self, answersdb::ServerReplyList}, matcher};
 use serde_ini;
 
 struct Args {
@@ -101,14 +101,7 @@ fn msgdiff() -> Result<(), Box<dyn Error>> {
                 let diff = matcher::compare(
                     &reply_list.replies[0],
                     &reply_list.replies[1],
-                    &vec![
-                        Field::Opcode,
-                        Field::Rcode,
-                        Field::Flags,
-                        Field::Question,
-                        Field::AnswerTypes,
-                        Field::AnswerRrsigTypes
-                ]);
+                    &args.config.diff.criteria);
                 if diff.len() > 0 {
                     return Some((reply_list.key, diff));
                 }
