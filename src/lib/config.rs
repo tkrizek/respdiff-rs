@@ -6,13 +6,13 @@ use crate::Error;
 
 #[derive(Deserialize, PartialEq, Debug, Clone)]
 pub struct Config {
-    sendrecv: SendRecvConfig,
-    diff: DiffConfig,
-    report: ReportConfig,
+    pub sendrecv: SendRecvConfig,
+    pub diff: DiffConfig,
+    pub report: ReportConfig,
     #[serde(deserialize_with = "servers_from_namelist")]
     pub servers: Vec<String>,
     #[serde(flatten)]
-    server_data: HashMap<String, ServerConfig>,
+    pub server_data: HashMap<String, ServerConfig>,
 }
 
 fn servers_from_namelist<'de, D>(deserializer: D) -> Result<Vec<String>, D::Error>
@@ -28,19 +28,19 @@ where
 
 #[derive(Deserialize, PartialEq, Debug, Copy, Clone)]
 pub struct SendRecvConfig {
-    timeout: f64,
-    jobs: u64,
-    time_delay_min: f64,
-    time_delay_max: f64,
-    max_timeouts: u64,
+    pub timeout: f64,
+    pub jobs: u64,
+    pub time_delay_min: f64,
+    pub time_delay_max: f64,
+    pub max_timeouts: u64,
 }
 
 #[derive(Deserialize, PartialEq, Debug, Copy, Clone)]
 pub struct ServerConfig {
-    ip: IpAddr,
+    pub ip: IpAddr,
     #[serde(deserialize_with = "port_from_str")]
-    port: u16,
-    transport: TransportProtocol,
+    pub port: u16,
+    pub transport: TransportProtocol,
 }
 
 fn port_from_str<'de, D>(deserializer: D) -> Result<u16, D::Error>
@@ -74,9 +74,9 @@ impl TryFrom<String> for TransportProtocol {
 
 #[derive(Deserialize, PartialEq, Eq, Debug, Clone)]
 pub struct DiffConfig {
-    target: String,
+    pub target: String,
     #[serde(deserialize_with = "criteria_from_list")]
-    criteria: Vec<DiffCriteria>,
+    pub criteria: Vec<DiffCriteria>,
 }
 
 #[derive(Deserialize, PartialEq, Eq, Debug, Copy, Clone)]
@@ -137,7 +137,7 @@ where
 #[derive(Deserialize, PartialEq, Eq, Debug, Clone)]
 pub struct ReportConfig {
     #[serde(deserialize_with = "field_weights_from_list")]
-    field_weights: Vec<FieldWeight>,
+    pub field_weights: Vec<FieldWeight>,
 }
 
 #[derive(Deserialize, PartialEq, Eq, Debug, Copy, Clone)]
