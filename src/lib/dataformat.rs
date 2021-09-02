@@ -3,37 +3,37 @@ use std::collections::{BTreeSet, BTreeMap};
 use crate::matcher::Field;
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
-struct Report {
-    start_time: u64,
-    end_time: u64,
-    total_queries: u64,
-    total_answers: u64,
-    other_disagreements: OtherDisagreements,
-    target_disagreements: TargetDisagreements,
-    summary: Option<()>,
-    reprodata: Option<()>,
+pub struct Report {
+    pub start_time: u64,
+    pub end_time: u64,
+    pub total_queries: u64,
+    pub total_answers: u64,
+    pub other_disagreements: OtherDisagreements,
+    pub target_disagreements: TargetDisagreements,
+    pub summary: Option<()>,
+    pub reprodata: Option<()>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
-struct OtherDisagreements {
-    queries: BTreeSet<u32>,
+pub struct OtherDisagreements {
+    pub queries: BTreeSet<u32>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
-struct TargetDisagreements {
-    fields: BTreeMap<Field, FieldDisagreements>,
+pub struct TargetDisagreements {
+    pub fields: BTreeMap<Field, FieldDisagreements>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
-struct FieldDisagreements {
-    mismatches: Vec<Disagreement>,
+pub struct FieldDisagreements {
+    pub mismatches: Vec<Disagreement>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
-struct Disagreement {
-    exp_val: String,
-    got_val: String,
-    queries: Vec<u32>,
+pub struct Disagreement {
+    pub exp_val: String,
+    pub got_val: String,
+    pub queries: Vec<u32>,
 }
 
 #[cfg(test)]
