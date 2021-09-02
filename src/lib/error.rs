@@ -24,6 +24,8 @@ pub enum Error {
     ConfigFile(io::Error),
     #[error("failed to parse config file: {0}")]
     ConfigRead(de::Error),
+    #[error("invaliad server name")]
+    InvalidServerName,
     #[error("functionality not yet implemented")]
     NotImplemented,
 }

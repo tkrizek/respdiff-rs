@@ -32,7 +32,7 @@ pub struct SendRecvConfig {
     pub jobs: u64,
     pub time_delay_min: f64,
     pub time_delay_max: f64,
-    pub max_timeouts: u64,
+    pub max_timeouts: u64,  // TODO make optional
 }
 
 #[derive(Deserialize, PartialEq, Debug, Copy, Clone)]

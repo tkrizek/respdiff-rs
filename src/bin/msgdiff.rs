@@ -11,7 +11,7 @@ use clap::{Arg, App};
 use lmdb::{Cursor, Transaction};
 use log::error;
 use rayon::prelude::*;
-use respdiff::{self, config::Config, database::{self, answersdb::ServerReplyList}, matcher};
+use respdiff::{self, config::Config, database::{self, answersdb::ServerReplyList}, matcher, dataformat::OtherDisagreements};
 use serde_ini;
 
 struct Args {
@@ -96,21 +96,88 @@ fn msgdiff() -> Result<(), Box<dyn Error>> {
                 }
             }
         }).collect();
+
+        // TODO readability: refactor into func
+        if args.config.servers.len() < 2 {
+            error!("Not enough servers to compare");
+            std::process::exit(1);
+        }
+        let target = &args.config.diff.target;
+        let i_target = args.config.servers
+            .iter()
+            .position(|x| x == target)
+            .ok_or(respdiff::Error::InvalidServerName)?;
+        let i_others = args.config.servers
+            .iter()
+            .enumerate()
+            .filter_map(|(i, s)| {
+                if s != target {
+                    return Some(i);
+                }
+                None
+            })
+            .collect::<Vec<_>>();
+        let i_cmp_target = (i_target, i_others[0]);
+        let i_cmps_others: Vec<(usize, usize)> =   // TODO formatting
+            i_others
+                .iter()
+                .copied()
+                .zip(
+                    i_others
+                    .iter()
+                    .copied()
+                    .skip(1)
+                )
+                .collect();
+
+        let others_disagreements = OtherDisagreements {
+            queries: {
+                reply_lists.par_iter().filter_map(|reply_list| {
+                    assert_eq!(reply_list.replies.len(), args.config.servers.len());
+                    for (j, k) in &i_cmps_others {
+                        let diff = matcher::compare(
+                            &reply_list.replies[*j],
+                            &reply_list.replies[*k],
+                            &args.config.diff.criteria);
+                        if diff.len() > 0 {
+                            return Some(reply_list.key);
+                        }
+                    }
+                    None
+                }).collect()
+            }
+        };
+
         let diffs: BTreeMap<_, _> = reply_lists.par_iter().filter_map(|reply_list| {
-            if reply_list.replies.len() >= 2 {
                 let diff = matcher::compare(
-                    &reply_list.replies[0],
-                    &reply_list.replies[1],
+                    &reply_list.replies[i_cmp_target.0],
+                    &reply_list.replies[i_cmp_target.1],
                     &args.config.diff.criteria);
                 if diff.len() > 0 {
                     return Some((reply_list.key, diff));
                 }
-            }
-            None
-        }).collect();
-        for (key, diff) in diffs {
-            println!("{} -> {:?}", key, diff);
-        }
+                None
+            })
+            .collect();
+
+        // TODO working on this
+        //let target_disagreements = TargetDisagreements {
+        //    fields: {
+        //        let mut fields: BTreeMap<Field, FieldDisagreements> = BTreeMap::new();
+        //        for (key, diff) in diffs {
+
+        //        }
+        //        fields
+        //    }
+        //};
+
+        // TODO remove
+        // for key in others_disagreements.queries {
+        //     println!("{}", key);
+        // }
+        // for (key, diff) in diffs {
+        //     println!("{} -> {:?}", key, diff);
+        // }
     }
 
     Err(Box::new(respdiff::Error::NotImplemented))
