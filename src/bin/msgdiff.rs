@@ -6,6 +6,7 @@ use std::error::Error;
 use std::fs::File;
 use std::io::BufReader;
 use std::path::PathBuf;
+use std::str::FromStr;
 use clap::{Arg, App};
 use lmdb::{Cursor, Transaction};
 use log::error;
@@ -15,7 +16,7 @@ use serde_ini;
 
 struct Args {
     config: Config,
-    //datafile: PathBuf,
+    datafile: PathBuf,
     envdir: PathBuf,
 }
 
@@ -31,13 +32,12 @@ fn parse_args() -> Result<Args, respdiff::Error> {
             .long("config")
             .value_name("FILE")
             .takes_value(true))
-//        TODO generarate JSON
-//        .arg(Arg::with_name("datafile")
-//            .help("JSON report file")
-//            .short("d")
-//            .long("datafile")
-//            .value_name("FILE")
-//            .takes_value(true))
+        .arg(Arg::with_name("datafile")
+            .help("JSON report file")
+            .short("d")
+            .long("datafile")
+            .value_name("FILE")
+            .takes_value(true))
         .get_matches();
 
     let envdir: PathBuf = matches.value_of("ENVDIR").unwrap().into();
@@ -49,9 +49,16 @@ fn parse_args() -> Result<Args, respdiff::Error> {
             let buf = BufReader::new(file);
             serde_ini::from_bufread::<_, Config>(buf).map_err(respdiff::Error::ConfigRead)?
         },
-//        datafile: {
-//            let datafile = matches.value_of("datafile").unwrap_or(envdir + "respdiff.cfg"
-//        },
+        datafile: {
+            match matches.value_of("datafile") {
+                Some(path) => PathBuf::from_str(path).unwrap(),
+                None => {
+                    let mut path = envdir.clone();
+                    path.push("report.json");
+                    path
+                },
+            }
+        },
         envdir: envdir,
     })
 }
