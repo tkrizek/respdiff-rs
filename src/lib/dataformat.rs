@@ -1,8 +1,6 @@
 use serde::{Serialize, Deserialize};
 use std::collections::{BTreeSet, BTreeMap};
-use crate::matcher::{Field, Mismatch};
-
-// TODO: refactor: make nested types module-private and only used in this module for serde purposes
+use crate::matcher::Field;
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
 pub struct Report {
@@ -10,29 +8,29 @@ pub struct Report {
     pub end_time: u64,
     pub total_queries: u64,
     pub total_answers: u64,
-    pub other_disagreements: OtherDisagreements,
-    pub target_disagreements: TargetDisagreements,
+    other_disagreements: Option<OtherDisagreements>,
+    target_disagreements: Option<TargetDisagreements>,
     pub summary: Option<()>,
     pub reprodata: Option<()>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
-pub struct OtherDisagreements {
-    pub queries: BTreeSet<u32>,
+struct OtherDisagreements {
+    queries: BTreeSet<u32>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
-pub struct TargetDisagreements {
-    pub fields: BTreeMap<Field, FieldDisagreements>,
+struct TargetDisagreements {
+    fields: BTreeMap<Field, FieldDisagreements>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
-pub struct FieldDisagreements {
-    pub mismatches: Vec<Disagreement>,
+struct FieldDisagreements {
+    mismatches: Vec<MismatchQueries>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
-pub struct Disagreement {
+struct MismatchQueries {
     pub exp_val: String,
     pub got_val: String,
     pub queries: Vec<u32>,
@@ -89,21 +87,21 @@ mod tests {
             end_time: 1628174644,
             total_queries: 100,
             total_answers: 99,
-            other_disagreements: OtherDisagreements {
+            other_disagreements: Some(OtherDisagreements {
                 queries: [22, 64, 93].iter().cloned().collect::<BTreeSet<u32>>(),
-            },
-            target_disagreements: TargetDisagreements {
+            }),
+            target_disagreements: Some(TargetDisagreements {
                 fields: [
                     (
                         Field::Rcode,
                         FieldDisagreements {
                             mismatches: vec![
-                                Disagreement {
+                                MismatchQueries {
                                     exp_val: "NOERROR".to_string(),
                                     got_val: "SERVFAIL".to_string(),
                                     queries: vec![6, 16]
                                 },
-                                Disagreement {
+                                MismatchQueries {
                                     exp_val: "NXDOMAIN".to_string(),
                                     got_val: "SERVFAIL".to_string(),
                                     queries: vec![43]
@@ -114,7 +112,7 @@ mod tests {
                         Field::Flags,
                         FieldDisagreements {
                             mismatches: vec![
-                                Disagreement {
+                                MismatchQueries {
                                     exp_val: "QR RD RA AD".to_string(),
                                     got_val: "QR RD RA".to_string(),
                                     queries: vec![32, 33, 46, 85]
@@ -122,7 +120,7 @@ mod tests {
                             ],
                         }
                     )].iter().cloned().collect(),
-            },
+            }),
             summary: None,
             reprodata: None,
         }

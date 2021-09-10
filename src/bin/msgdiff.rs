@@ -11,7 +11,7 @@ use clap::{Arg, App};
 use lmdb::{Cursor, Transaction};
 use log::error;
 use rayon::prelude::*;
-use respdiff::{self, config::Config, database::{self, answersdb::ServerReplyList}, matcher::{self, Field, FieldMismatches}, dataformat::OtherDisagreements};
+use respdiff::{self, config::Config, database::{self, answersdb::ServerReplyList}, matcher::{self, Field, FieldMismatches}};
 use serde_ini;
 
 struct Args {
@@ -130,23 +130,22 @@ fn msgdiff() -> Result<(), Box<dyn Error>> {
                 )
                 .collect();
 
-        let others_disagreements = OtherDisagreements {
-            queries: {
-                reply_lists.par_iter().filter_map(|reply_list| {
-                    assert_eq!(reply_list.replies.len(), args.config.servers.len());
-                    for (j, k) in &i_cmps_others {
-                        let diff = matcher::compare(
-                            &reply_list.replies[*j],
-                            &reply_list.replies[*k],
-                            &args.config.diff.criteria);
-                        if diff.len() > 0 {
-                            return Some(reply_list.key);
-                        }
+        let others_disagreements = reply_lists
+            .par_iter()
+            .filter_map(|reply_list| {
+                assert_eq!(reply_list.replies.len(), args.config.servers.len());
+                for (j, k) in &i_cmps_others {
+                    let diff = matcher::compare(
+                        &reply_list.replies[*j],
+                        &reply_list.replies[*k],
+                        &args.config.diff.criteria);
+                    if diff.len() > 0 {
+                        return Some(reply_list.key);
                     }
-                    None
-                }).collect()
-            }
-        };
+                }
+                None
+            })
+            .collect::<BTreeSet<u32>>();
 
         let diffs: BTreeMap<_, _> = reply_lists.par_iter().filter_map(|reply_list| {
                 let diff = matcher::compare(
@@ -164,14 +163,14 @@ fn msgdiff() -> Result<(), Box<dyn Error>> {
         for (key, qmismatches) in diffs {
             for mismatch in qmismatches {
                 let field: Field = Field::from(&mismatch);
-                let mut mismatches = match target_disagreements.get_mut(&field) {
+                let mismatches = match target_disagreements.get_mut(&field) {
                     Some(mismatches) => mismatches,
                     None => {
                         target_disagreements.insert(field, HashMap::new());
                         target_disagreements.get_mut(&field).unwrap()
                     },
                 };
-                let mut queries = match mismatches.get_mut(&mismatch) {
+                let queries = match mismatches.get_mut(&mismatch) {
                     Some(queries) => queries,
                     None => {
                         mismatches.insert(mismatch.clone(), BTreeSet::new());
@@ -181,14 +180,6 @@ fn msgdiff() -> Result<(), Box<dyn Error>> {
                 queries.insert(key);
             }
         }
-
-        // TODO remove
-        // for key in others_disagreements.queries {
-        //     println!("{}", key);
-        // }
-        // for (key, diff) in diffs {
-        //     println!("{} -> {:?}", key, diff);
-        // }
     }
 
     Err(Box::new(respdiff::Error::NotImplemented))
