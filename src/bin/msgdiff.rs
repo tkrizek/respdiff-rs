@@ -11,7 +11,7 @@ use clap::{Arg, App};
 use lmdb::{Cursor, Transaction};
 use log::error;
 use rayon::prelude::*;
-use respdiff::{self, config::Config, database::{self, answersdb::ServerReplyList}, matcher::{self, Field, FieldMismatches}};
+use respdiff::{self, config::Config, database::{self, answersdb::ServerReplyList}, dataformat::Report, matcher::{self, Field, FieldMismatches}};
 use serde_ini;
 
 struct Args {
@@ -117,7 +117,7 @@ fn msgdiff() -> Result<(), Box<dyn Error>> {
                 None
             })
             .collect::<Vec<_>>();
-        let i_cmp_target = (i_target, i_others[0]);
+        let i_cmp_target = (i_others[0], i_target);
         let i_cmps_others: Vec<(usize, usize)> =   // TODO formatting
             i_others
                 .iter()
@@ -161,6 +161,9 @@ fn msgdiff() -> Result<(), Box<dyn Error>> {
 
         let mut target_disagreements: BTreeMap<Field, FieldMismatches> = BTreeMap::new();
         for (key, qmismatches) in diffs {
+            if others_disagreements.contains(&key) {
+                continue;
+            }
             for mismatch in qmismatches {
                 let field: Field = Field::from(&mismatch);
                 let mismatches = match target_disagreements.get_mut(&field) {
@@ -180,6 +183,18 @@ fn msgdiff() -> Result<(), Box<dyn Error>> {
                 queries.insert(key);
             }
         }
+
+        let mut report = Report::new();
+        report.set_others_disagree(&others_disagreements);
+        report.set_target_disagrees(target_disagreements);
+
+        // TODO temp
+        report.start_time = 1628173617;
+        report.end_time = 1628174644;
+        report.total_queries = 616341;
+        report.total_answers = 616341;
+        let json = serde_json::to_string(&report).unwrap();  // TODO
+        println!("{}", json);
     }
 
     Err(Box::new(respdiff::Error::NotImplemented))

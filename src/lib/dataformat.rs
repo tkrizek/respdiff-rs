@@ -1,36 +1,70 @@
 use serde::{Serialize, Deserialize};
 use std::collections::{BTreeSet, BTreeMap};
-use crate::matcher::Field;
+use crate::matcher::{Field, FieldMismatches};
 
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Default)]
 pub struct Report {
     pub start_time: u64,
     pub end_time: u64,
     pub total_queries: u64,
     pub total_answers: u64,
-    other_disagreements: Option<OtherDisagreements>,
-    target_disagreements: Option<TargetDisagreements>,
+    other_disagreements: OtherDisagreements,
+    target_disagreements: TargetDisagreements,
     pub summary: Option<()>,
     pub reprodata: Option<()>,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
+impl Report {
+    pub fn new() -> Self {
+        Default::default()
+    }
+
+    // TODO refactor: use type alias for QKey
+    pub fn others_disagree(&self) -> BTreeSet<u32> {
+        self.other_disagreements.queries.clone()
+    }
+
+    pub fn set_others_disagree(&mut self, queries: &BTreeSet<u32>) {
+        self.other_disagreements.queries = queries.clone();
+    }
+
+    // FIXME: no way to retrieve target_disagrees - not needed right now
+    pub fn set_target_disagrees(&mut self, dis: BTreeMap<Field, FieldMismatches>) {
+        self.target_disagreements.fields = BTreeMap::new();
+        for (field, fmismatches) in dis {
+            let mut items: Vec<MismatchQueries> = Vec::new();
+            for (mismatch, queries) in fmismatches {
+                let mmqueries = MismatchQueries {
+                    exp_val: mismatch.expected(),
+                    got_val: mismatch.got(),
+                    queries: queries.into_iter().collect(),
+                };
+                items.push(mmqueries);
+            }
+            self.target_disagreements.fields.insert(field, FieldDisagreements {
+                mismatches: items
+            });
+        }
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Default)]
 struct OtherDisagreements {
     queries: BTreeSet<u32>,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Default)]
 struct TargetDisagreements {
     fields: BTreeMap<Field, FieldDisagreements>,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Default)]
 struct FieldDisagreements {
     mismatches: Vec<MismatchQueries>,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
-struct MismatchQueries {
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Default)]
+pub struct MismatchQueries {
     pub exp_val: String,
     pub got_val: String,
     pub queries: Vec<u32>,
@@ -87,10 +121,10 @@ mod tests {
             end_time: 1628174644,
             total_queries: 100,
             total_answers: 99,
-            other_disagreements: Some(OtherDisagreements {
+            other_disagreements: OtherDisagreements {
                 queries: [22, 64, 93].iter().cloned().collect::<BTreeSet<u32>>(),
-            }),
-            target_disagreements: Some(TargetDisagreements {
+            },
+            target_disagreements: TargetDisagreements {
                 fields: [
                     (
                         Field::Rcode,
@@ -120,7 +154,7 @@ mod tests {
                             ],
                         }
                     )].iter().cloned().collect(),
-            }),
+            },
             summary: None,
             reprodata: None,
         }
