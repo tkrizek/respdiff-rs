@@ -188,16 +188,17 @@ fn msgdiff() -> Result<(), Box<dyn Error>> {
         report.set_others_disagree(&others_disagreements);
         report.set_target_disagrees(target_disagreements);
 
-        // TODO temp
+        // TODO obtain this data from DB
         report.start_time = 1628173617;
         report.end_time = 1628174644;
         report.total_queries = 616341;
         report.total_answers = 616341;
-        let json = serde_json::to_string(&report).unwrap();  // TODO
-        println!("{}", json);
+
+        let out = File::create(args.datafile)?;  // TODO maybe check if exists
+        serde_json::to_writer(&out, &report)?;
     }
 
-    Err(Box::new(respdiff::Error::NotImplemented))
+    Ok(())
 }
 
 fn main() {
