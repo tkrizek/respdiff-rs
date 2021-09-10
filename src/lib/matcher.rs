@@ -117,6 +117,22 @@ impl Matcher for DiffCriteria {
     }
 }
 
+fn answertypes_str(types: &BTreeSet<iana::rtype::Rtype>) -> String {
+    types
+        .iter()
+        .map(|x| format!("{}", x))
+        .collect::<Vec<String>>()
+        .join(" ")
+}
+
+fn answerrrsigs_str(types: &BTreeSet<iana::rtype::Rtype>) -> String {
+    types
+        .iter()
+        .map(|x| format!("RRSIG({})", x))
+        .collect::<Vec<String>>()
+        .join(" ")
+}
+
 #[derive(Debug, PartialEq, Eq, Clone, Hash)]
 pub enum Mismatch {
     TimeoutExpected,
@@ -133,66 +149,45 @@ pub enum Mismatch {
     AnswerRrsigs(BTreeSet<iana::rtype::Rtype>, BTreeSet<iana::rtype::Rtype>),
 }
 
+impl Mismatch {
+    pub fn expected(&self) -> String {
+        match self {
+            Mismatch::TimeoutExpected => String::from("timeout"),
+            Mismatch::TimeoutGot => String::from("answer"),
+            Mismatch::MalformedExpected => String::from("malformed"),
+            Mismatch::MalformedGot => String::from("answer"),
+            Mismatch::MalformedBoth => String::from("malformed"),
+            Mismatch::QuestionCount => String::from("question"),
+            Mismatch::AnswerTypes(exp, _) => answertypes_str(exp),
+            Mismatch::AnswerRrsigs(exp, _) => answerrrsigs_str(exp),
+            Mismatch::Opcode(exp, _) => exp.to_string(),
+            Mismatch::Rcode(exp, _) => exp.to_string(),
+            Mismatch::Flags(exp, _) => exp.to_string(),
+            Mismatch::Question(exp, _) => exp.to_string(),
+        }
+    }
+
+    pub fn got(&self) -> String {
+        match self {
+            Mismatch::TimeoutExpected => String::from("answer"),
+            Mismatch::TimeoutGot => String::from("timeout"),
+            Mismatch::MalformedExpected => String::from("answer"),
+            Mismatch::MalformedGot => String::from("malformed"),
+            Mismatch::MalformedBoth => String::from("malformed"),
+            Mismatch::QuestionCount => String::from("questions"),
+            Mismatch::AnswerTypes(_, got) => answertypes_str(got),
+            Mismatch::AnswerRrsigs(_, got) => answerrrsigs_str(got),
+            Mismatch::Opcode(_, got) => got.to_string(),
+            Mismatch::Rcode(_, got) => got.to_string(),
+            Mismatch::Flags(_, got) => got.to_string(),
+            Mismatch::Question(_, got) => got.to_string(),
+        }
+    }
+}
+
 impl fmt::Display for Mismatch {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Mismatch::TimeoutExpected => {
-                write!(f, "timeout != answer")
-            },
-            Mismatch::TimeoutGot => {
-                write!(f, "answer != timeout")
-            },
-            Mismatch::MalformedExpected => {
-                write!(f, "malformed != answer")
-            },
-            Mismatch::MalformedGot => {
-                write!(f, "answer != malformed")
-            },
-            Mismatch::MalformedBoth => {
-                write!(f, "malformed != malformed")
-            },
-            Mismatch::QuestionCount => {
-                write!(f, "question != questions")
-            },
-            Mismatch::AnswerTypes(exp, got) => {
-                write!(f, "{} != {}",
-                    exp
-                        .iter()
-                        .map(|x| format!("{}", x))
-                        .collect::<Vec<String>>()
-                        .join(" "),
-                    got
-                        .iter()
-                        .map(|x| format!("{}", x))
-                        .collect::<Vec<String>>()
-                        .join(" "))
-            },
-            Mismatch::AnswerRrsigs(exp, got) => {
-                write!(f, "{} != {}",
-                    exp
-                        .iter()
-                        .map(|x| format!("RRSIG({})", x))
-                        .collect::<Vec<String>>()
-                        .join(" "),
-                    got
-                        .iter()
-                        .map(|x| format!("RRSIG({})", x))
-                        .collect::<Vec<String>>()
-                        .join(" "))
-            },
-            Mismatch::Opcode(exp, got) => {
-                write!(f, "{} != {}", exp, got)
-            },
-            Mismatch::Rcode(exp, got) => {
-                write!(f, "{} != {}", exp, got)
-            },
-            Mismatch::Flags(exp, got) => {
-                write!(f, "{} != {}", exp, got)
-            },
-            Mismatch::Question(exp, got) => {
-                write!(f, "{} != {}", exp, got)
-            },
-        }
+        write!(f, "{} != {}", self.expected(), self.got())
     }
 }
 
