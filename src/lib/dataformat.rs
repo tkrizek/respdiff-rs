@@ -1,6 +1,8 @@
 use serde::{Serialize, Deserialize};
 use std::collections::{BTreeSet, BTreeMap};
-use crate::matcher::Field;
+use crate::matcher::{Field, Mismatch};
+
+// TODO: refactor: make nested types module-private and only used in this module for serde purposes
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
 pub struct Report {

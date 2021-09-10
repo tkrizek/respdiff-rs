@@ -1,5 +1,5 @@
 use serde::{Serialize, Deserialize};
-use std::collections::{BTreeSet, HashSet};
+use std::collections::{BTreeSet, HashSet, HashMap};
 use std::fmt;
 use crate::database::answersdb::{DnsReply, ServerReply};  // TODO weird location
 use crate::config::DiffCriteria;  // TODO move?
@@ -16,6 +16,25 @@ pub enum Field {
     Question,
     AnswerTypes,
     AnswerRrsigs,
+}
+
+impl From<&Mismatch> for Field {
+    fn from (mismatch: &Mismatch) -> Field {
+        match mismatch {
+            Mismatch::TimeoutExpected => Field::Timeout,
+            Mismatch::TimeoutGot => Field::Timeout,
+            Mismatch::MalformedExpected => Field::Malformed,
+            Mismatch::MalformedGot => Field::Malformed,
+            Mismatch::MalformedBoth => Field::Malformed,
+            Mismatch::QuestionCount => Field::Question,
+            Mismatch::AnswerTypes(_, _) => Field::AnswerTypes,
+            Mismatch::AnswerRrsigs(_, _) => Field::AnswerRrsigs,
+            Mismatch::Opcode(_, _) => Field::Opcode,
+            Mismatch::Rcode(_, _) => Field::Rcode,
+            Mismatch::Flags(_, _) => Field::Flags,
+            Mismatch::Question(_, _) => Field::Question,
+        }
+    }
 }
 
 trait Matcher {
@@ -227,6 +246,8 @@ pub fn compare(
 
     mismatches
 }
+
+pub type FieldMismatches = HashMap<Mismatch, BTreeSet<u32>>;
 
 #[cfg(test)]
 mod tests {

@@ -1,6 +1,6 @@
 extern crate lmdb;
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeSet, BTreeMap, HashMap};
 use std::convert::TryFrom;
 use std::error::Error;
 use std::fs::File;
@@ -11,7 +11,7 @@ use clap::{Arg, App};
 use lmdb::{Cursor, Transaction};
 use log::error;
 use rayon::prelude::*;
-use respdiff::{self, config::Config, database::{self, answersdb::ServerReplyList}, matcher, dataformat::OtherDisagreements};
+use respdiff::{self, config::Config, database::{self, answersdb::ServerReplyList}, matcher::{self, Field, FieldMismatches}, dataformat::OtherDisagreements};
 use serde_ini;
 
 struct Args {
@@ -160,16 +160,27 @@ fn msgdiff() -> Result<(), Box<dyn Error>> {
             })
             .collect();
 
-        // TODO working on this
-        //let target_disagreements = TargetDisagreements {
-        //    fields: {
-        //        let mut fields: BTreeMap<Field, FieldDisagreements> = BTreeMap::new();
-        //        for (key, diff) in diffs {
-
-        //        }
-        //        fields
-        //    }
-        //};
+        let mut target_disagreements: BTreeMap<Field, FieldMismatches> = BTreeMap::new();
+        for (key, qmismatches) in diffs {
+            for mismatch in qmismatches {
+                let field: Field = Field::from(&mismatch);
+                let mut mismatches = match target_disagreements.get_mut(&field) {
+                    Some(mismatches) => mismatches,
+                    None => {
+                        target_disagreements.insert(field, HashMap::new());
+                        target_disagreements.get_mut(&field).unwrap()
+                    },
+                };
+                let mut queries = match mismatches.get_mut(&mismatch) {
+                    Some(queries) => queries,
+                    None => {
+                        mismatches.insert(mismatch.clone(), BTreeSet::new());
+                        mismatches.get_mut(&mismatch).unwrap()
+                    },
+                };
+                queries.insert(key);
+            }
+        }
 
         // TODO remove
         // for key in others_disagreements.queries {
