@@ -37,7 +37,7 @@ pub struct SendRecvConfig {
     pub jobs: u64,
     pub time_delay_min: f64,
     pub time_delay_max: f64,
-    pub max_timeouts: u64, // TODO make optional
+    pub max_timeouts: Option<u64>,
 }
 
 #[derive(Deserialize, PartialEq, Debug, Copy, Clone)]
@@ -270,7 +270,7 @@ field_weights = timeout, malformed, opcode, question, rcode, flags, answertypes,
                 jobs: 16,
                 time_delay_min: 0.0,
                 time_delay_max: 0.0,
-                max_timeouts: 10,
+                max_timeouts: Some(10),
             },
             diff: DiffConfig {
                 target: "cznic".to_string(),
