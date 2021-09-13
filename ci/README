@@ -1,0 +1,5 @@
+```
+docker build --no-cache -t registry.nic.cz/knot/respdiff-rs/ci .
+docker login registry.nic.cz
+docker push registry.nic.cz/knot/respdiff-rs/ci
+```
