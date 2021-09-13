@@ -431,8 +431,8 @@ mod tests {
         let res = compare(r2, r3, &crit);
         assert_eq!(res.len(), 1);
         assert!(res.contains(&Mismatch::AnswerTypes(
-            BTreeSet::from([Rtype::A]),
-            BTreeSet::from([Rtype::Aaaa]),
+            [Rtype::A].iter().cloned().collect(),
+            [Rtype::Aaaa].iter().cloned().collect()
             )));
     }
 
@@ -465,8 +465,8 @@ mod tests {
         let res = compare(r1, r2, &crit);
         assert_eq!(res.len(), 1);
         assert!(res.contains(&Mismatch::AnswerRrsigs(
-            BTreeSet::from([Rtype::Txt]),
-            BTreeSet::from([]),
+            [Rtype::Txt].iter().cloned().collect(),
+            [].iter().cloned().collect(),
             )));
     }
 }
