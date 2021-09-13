@@ -1,12 +1,14 @@
+image: rust:latest
+
 variables:
   LC_ALL: C.UTF-8
 
 stages:
   - build
+  - test
 
 rust-latest:
   stage: build
-  image: rust:latest
   script:
     - cargo build --verbose
     - cargo test --verbose
@@ -18,3 +20,17 @@ rust-nightly:
     - cargo build --verbose
     - cargo test --verbose
   allow_failure: true
+
+fmt:
+  stage: test
+  before_script:
+    - rustup component add rustfmt
+  script:
+    - cargo fmt -- --check
+
+clippy:
+  stage: test
+  before_script:
+    - rustup component add clippy
+  script:
+    - cargo clippy -- -D "warnings"
