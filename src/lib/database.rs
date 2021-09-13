@@ -112,7 +112,7 @@ pub mod queriesdb {
         fn try_from(item: lmdb::Result<(&[u8], &[u8])>) -> Result<Self, Self::Error> {
             match item {
                 Ok((key, val)) => Ok(Query {
-                    key: LittleEndian::read_u32(&key),
+                    key: LittleEndian::read_u32(key),
                     wire: val.to_vec(),
                 }),
                 Err(e) => {
@@ -241,10 +241,10 @@ pub mod answersdb {
             }
 
             if i == buf.len() {
-                return Ok(ServerReplyList {
-                    key: LittleEndian::read_u32(&key),
-                    replies: replies,
-                });
+                Ok(ServerReplyList {
+                    key: LittleEndian::read_u32(key),
+                    replies,
+                })
             } else {
                 Err(DbFormatError::ReplyMissingData)
             }

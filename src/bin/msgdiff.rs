@@ -11,7 +11,7 @@ use respdiff::{
     dataformat::Report,
     matcher::{self, Field, FieldMismatches},
 };
-use serde_ini;
+
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::convert::TryFrom;
 use std::error::Error;
@@ -71,7 +71,7 @@ fn parse_args() -> Result<Args, respdiff::Error> {
                 }
             }
         },
-        envdir: envdir,
+        envdir,
     })
 }
 
@@ -86,7 +86,7 @@ fn msgdiff() -> Result<(), Box<dyn Error>> {
         }
     };
 
-    let adb = database::open_db(&env, &database::answersdb::NAME, false)?;
+    let adb = database::open_db(&env, database::answersdb::NAME, false)?;
     {
         let txn = env.begin_ro_txn()?;
         let mut cur = txn.open_ro_cursor(adb)?;
@@ -155,7 +155,7 @@ fn msgdiff() -> Result<(), Box<dyn Error>> {
                         &reply_list.replies[*k],
                         &args.config.diff.criteria,
                     );
-                    if diff.len() > 0 {
+                    if !diff.is_empty() {
                         return Some(reply_list.key);
                     }
                 }
@@ -171,7 +171,7 @@ fn msgdiff() -> Result<(), Box<dyn Error>> {
                     &reply_list.replies[i_cmp_target.1],
                     &args.config.diff.criteria,
                 );
-                if diff.len() > 0 {
+                if !diff.is_empty() {
                     return Some((reply_list.key, diff));
                 }
                 None

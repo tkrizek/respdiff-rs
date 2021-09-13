@@ -8,7 +8,7 @@ use respdiff::{
     config::Config,
     database::{self, queriesdb::Query},
 };
-use serde_ini;
+
 use std::convert::TryFrom;
 use std::error::Error;
 use std::fs::File;
@@ -59,7 +59,7 @@ fn transceiver() -> Result<(), Box<dyn Error>> {
             std::process::exit(1);
         }
     };
-    let metadb = match database::open_db(&env, &database::metadb::NAME, true) {
+    let metadb = match database::open_db(&env, database::metadb::NAME, true) {
         Ok(db) => db,
         Err(e) => {
             error!(
@@ -83,9 +83,9 @@ fn transceiver() -> Result<(), Box<dyn Error>> {
     //    error!("answers database already exists");
     //    std::process::exit(1);
     //}
-    let _adb = database::open_db(&env, &database::answersdb::NAME, true)?;
+    let _adb = database::open_db(&env, database::answersdb::NAME, true)?;
 
-    let qdb = match database::open_db(&env, &database::queriesdb::NAME, false) {
+    let qdb = match database::open_db(&env, database::queriesdb::NAME, false) {
         Ok(db) => db,
         Err(e) => {
             error!(
@@ -100,7 +100,7 @@ fn transceiver() -> Result<(), Box<dyn Error>> {
     {
         let txn = env.begin_ro_txn()?;
         let mut cur = txn.open_ro_cursor(qdb)?;
-        let iter = cur.iter().map(|x| Query::try_from(x));
+        let iter = cur.iter().map(Query::try_from);
         iter.for_each(|query| {
             println!("{:?}", query);
         });

@@ -1,4 +1,3 @@
-use lmdb;
 use serde_ini::de;
 use std::io;
 use std::string::FromUtf8Error;

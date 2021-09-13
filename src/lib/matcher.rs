@@ -217,7 +217,7 @@ impl fmt::Display for Mismatch {
 pub fn compare(
     expected: &ServerReply,
     got: &ServerReply,
-    criteria: &Vec<DiffCriteria>,
+    criteria: &[DiffCriteria],
 ) -> HashSet<Mismatch> {
     let mut mismatches = HashSet::new();
 
