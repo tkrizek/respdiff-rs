@@ -1,6 +1,6 @@
-use serde::{Serialize, Deserialize};
-use std::collections::{BTreeSet, BTreeMap};
 use crate::matcher::{Field, FieldMismatches};
+use serde::{Deserialize, Serialize};
+use std::collections::{BTreeMap, BTreeSet};
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Default)]
 pub struct Report {
@@ -41,9 +41,9 @@ impl Report {
                 };
                 items.push(mmqueries);
             }
-            self.target_disagreements.fields.insert(field, FieldDisagreements {
-                mismatches: items
-            });
+            self.target_disagreements
+                .fields
+                .insert(field, FieldDisagreements { mismatches: items });
         }
     }
 }
@@ -133,27 +133,30 @@ mod tests {
                                 MismatchQueries {
                                     exp_val: "NOERROR".to_string(),
                                     got_val: "SERVFAIL".to_string(),
-                                    queries: vec![6, 16]
+                                    queries: vec![6, 16],
                                 },
                                 MismatchQueries {
                                     exp_val: "NXDOMAIN".to_string(),
                                     got_val: "SERVFAIL".to_string(),
-                                    queries: vec![43]
+                                    queries: vec![43],
                                 },
                             ],
-                        }
-                    ), (
+                        },
+                    ),
+                    (
                         Field::Flags,
                         FieldDisagreements {
-                            mismatches: vec![
-                                MismatchQueries {
-                                    exp_val: "QR RD RA AD".to_string(),
-                                    got_val: "QR RD RA".to_string(),
-                                    queries: vec![32, 33, 46, 85]
-                                },
-                            ],
-                        }
-                    )].iter().cloned().collect(),
+                            mismatches: vec![MismatchQueries {
+                                exp_val: "QR RD RA AD".to_string(),
+                                got_val: "QR RD RA".to_string(),
+                                queries: vec![32, 33, 46, 85],
+                            }],
+                        },
+                    ),
+                ]
+                .iter()
+                .cloned()
+                .collect(),
             },
             summary: None,
             reprodata: None,

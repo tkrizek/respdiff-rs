@@ -1,8 +1,8 @@
+use crate::Error;
 use serde::{Deserialize, Deserializer};
 use std::collections::HashMap;
 use std::convert::{TryFrom, TryInto};
 use std::net::IpAddr;
-use crate::Error;
 
 #[derive(Deserialize, PartialEq, Debug, Clone)]
 pub struct Config {
@@ -21,8 +21,13 @@ where
 {
     let m: HashMap<String, String> = Deserialize::deserialize(deserializer)?;
     match m.get("names") {
-        Some(namelist) => Ok(namelist.split(',').map(|name| name.trim().to_string()).collect()),
-        None => Err(serde::de::Error::custom("[servers] section missing key 'names'")),
+        Some(namelist) => Ok(namelist
+            .split(',')
+            .map(|name| name.trim().to_string())
+            .collect()),
+        None => Err(serde::de::Error::custom(
+            "[servers] section missing key 'names'",
+        )),
     }
 }
 
@@ -32,7 +37,7 @@ pub struct SendRecvConfig {
     pub jobs: u64,
     pub time_delay_min: f64,
     pub time_delay_max: f64,
-    pub max_timeouts: u64,  // TODO make optional
+    pub max_timeouts: u64, // TODO make optional
 }
 
 #[derive(Deserialize, PartialEq, Debug, Copy, Clone)]
@@ -301,27 +306,42 @@ field_weights = timeout, malformed, opcode, question, rcode, flags, answertypes,
                 "cznic".to_string(),
             ],
             server_data: [
-                ("cznic", ServerConfig {
-                    ip: "185.43.135.1".parse().unwrap(),
-                    port: 53,
-                    transport: TransportProtocol::Udp,
-                }),
-                ("google", ServerConfig {
-                    ip: "8.8.8.8".parse().unwrap(),
-                    port: 53,
-                    transport: TransportProtocol::Tcp,
-                }),
-                ("cloudflare", ServerConfig {
-                    ip: "1.1.1.1".parse().unwrap(),
-                    port: 853,
-                    transport: TransportProtocol::Tls,
-                }),
-            ].iter().map(|(k, v)| (k.to_string(), v.to_owned())).collect(),
+                (
+                    "cznic",
+                    ServerConfig {
+                        ip: "185.43.135.1".parse().unwrap(),
+                        port: 53,
+                        transport: TransportProtocol::Udp,
+                    },
+                ),
+                (
+                    "google",
+                    ServerConfig {
+                        ip: "8.8.8.8".parse().unwrap(),
+                        port: 53,
+                        transport: TransportProtocol::Tcp,
+                    },
+                ),
+                (
+                    "cloudflare",
+                    ServerConfig {
+                        ip: "1.1.1.1".parse().unwrap(),
+                        port: 853,
+                        transport: TransportProtocol::Tls,
+                    },
+                ),
+            ]
+            .iter()
+            .map(|(k, v)| (k.to_string(), v.to_owned()))
+            .collect(),
         }
     }
 
     #[test]
     fn test_de() {
-        assert_eq!(expected(), serde_ini::from_str::<Config>(TEST_INPUT).unwrap());
+        assert_eq!(
+            expected(),
+            serde_ini::from_str::<Config>(TEST_INPUT).unwrap()
+        );
     }
 }
