@@ -7,7 +7,7 @@ use rayon::prelude::*;
 use respdiff::{
     self,
     config::Config,
-    database::{self, answersdb::ServerReplyList},
+    database::{self, answersdb::ServerReplyList, QKey},
     dataformat::Report,
     matcher::{self, Field, FieldMismatches},
 };
@@ -162,7 +162,7 @@ fn msgdiff() -> Result<(), Box<dyn Error>> {
                 }
                 None
             })
-            .collect::<BTreeSet<u32>>();
+            .collect::<BTreeSet<QKey>>();
 
         let diffs: BTreeMap<_, _> = reply_lists
             .par_iter()

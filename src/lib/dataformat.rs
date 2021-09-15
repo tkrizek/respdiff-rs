@@ -1,4 +1,7 @@
-use crate::matcher::{Field, FieldMismatches};
+use crate::{
+    database::QKey,
+    matcher::{Field, FieldMismatches}
+};
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -19,12 +22,11 @@ impl Report {
         Default::default()
     }
 
-    // TODO refactor: use type alias for QKey
-    pub fn others_disagree(&self) -> BTreeSet<u32> {
+    pub fn others_disagree(&self) -> BTreeSet<QKey> {
         self.other_disagreements.queries.clone()
     }
 
-    pub fn set_others_disagree(&mut self, queries: &BTreeSet<u32>) {
+    pub fn set_others_disagree(&mut self, queries: &BTreeSet<QKey>) {
         self.other_disagreements.queries = queries.clone();
     }
 
@@ -50,7 +52,7 @@ impl Report {
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Default)]
 struct OtherDisagreements {
-    queries: BTreeSet<u32>,
+    queries: BTreeSet<QKey>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Default)]
@@ -67,7 +69,7 @@ struct FieldDisagreements {
 pub struct MismatchQueries {
     pub exp_val: String,
     pub got_val: String,
-    pub queries: Vec<u32>,
+    pub queries: Vec<QKey>,
 }
 
 #[cfg(test)]
@@ -122,7 +124,7 @@ mod tests {
             total_queries: 100,
             total_answers: 99,
             other_disagreements: OtherDisagreements {
-                queries: [22, 64, 93].iter().cloned().collect::<BTreeSet<u32>>(),
+                queries: [22, 64, 93].iter().cloned().collect::<BTreeSet<QKey>>(),
             },
             target_disagreements: TargetDisagreements {
                 fields: [

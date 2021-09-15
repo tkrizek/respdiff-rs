@@ -3,7 +3,10 @@ use std::path::Path;
 
 use crate::{Error, Result};
 
-// Version string of supported respdiff db.
+/// 32 bit integer representing a key under which the query is stored in LMDB.
+pub type QKey = u32;
+
+/// Version string of supported respdiff db.
 const BIN_FORMAT_VERSION: &str = "2018-05-21";
 
 // Create an LMDB Environment. Only a single instance can exist in a process.
@@ -105,6 +108,7 @@ pub mod metadb {
 
 pub mod queriesdb {
     use byteorder::{ByteOrder, LittleEndian};
+    use crate::database::QKey;
     use log::warn;
     use std::convert::TryFrom;
 
@@ -112,7 +116,7 @@ pub mod queriesdb {
 
     #[derive(Debug)]
     pub struct Query {
-        pub key: u32,
+        pub key: QKey,
         pub wire: Vec<u8>,
     }
 
@@ -135,7 +139,10 @@ pub mod queriesdb {
 }
 
 pub mod answersdb {
-    use crate::error::DbFormatError;
+    use crate::{
+        database::QKey,
+        error::DbFormatError
+    };
     use byteorder::{ByteOrder, LittleEndian};
     use domain::base::{iana::rtype::Rtype, octets::ParseError, Message};
     use domain::rdata::Rrsig;
@@ -200,7 +207,7 @@ pub mod answersdb {
 
     #[derive(Debug, PartialEq, Eq)]
     pub struct ServerReplyList {
-        pub key: u32,
+        pub key: QKey,
         pub replies: Vec<ServerReply>,
     }
 

@@ -1,5 +1,10 @@
-use crate::config::DiffCriteria; // TODO move?
-use crate::database::answersdb::{DnsReply, ServerReply}; // TODO weird location
+use crate::{
+    config::DiffCriteria,
+    database::{
+        answersdb::{DnsReply, ServerReply}, // TODO weird location
+        QKey
+    }
+};
 use domain::base::{
     header::Flags,
     iana,
@@ -250,7 +255,7 @@ pub fn compare(
     mismatches
 }
 
-pub type FieldMismatches = HashMap<Mismatch, BTreeSet<u32>>;
+pub type FieldMismatches = HashMap<Mismatch, BTreeSet<QKey>>;
 
 #[cfg(test)]
 mod tests {
