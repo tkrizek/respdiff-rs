@@ -1,0 +1,41 @@
+image: registry.nic.cz/knot/respdiff-rs/ci
+
+variables:
+  LC_ALL: C.UTF-8
+
+stages:
+  - build
+  - test
+
+rust-latest:
+  stage: build
+  script:
+    - cargo build --verbose
+    - cargo test --verbose
+
+rust-nightly:
+  stage: build
+  image: rustlang/rust:nightly
+  script:
+    - cargo build --verbose
+    - cargo test --verbose
+  allow_failure: true
+
+fmt:
+  stage: test
+  script:
+    - cargo fmt -- --check
+
+clippy:
+  stage: test
+  script:
+    - cargo clippy -- -D "warnings"
+
+msgdiff:
+  stage: test
+  script:
+    - cargo run --bin msgdiff -- -c test/msgdiff-json/respdiff.cfg -d msgdiff-rs.json /lmdb/msgdiff-json
+    - if [ -n "$(jd -set msgdiff-rs.json test/msgdiff-json/msgdiff.json)" ]; then exit 1; fi
+  after_script:
+    # run once again to obtain cmd output (YUCK)
+    - jd -set msgdiff-rs.json test/msgdiff-json/msgdiff.json

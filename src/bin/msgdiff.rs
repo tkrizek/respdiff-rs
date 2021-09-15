@@ -1,18 +1,24 @@
 extern crate lmdb;
 
-use std::collections::{BTreeSet, BTreeMap, HashMap};
+use clap::{App, Arg};
+use lmdb::{Cursor, Transaction};
+use log::error;
+use rayon::prelude::*;
+use respdiff::{
+    self,
+    config::Config,
+    database::{self, answersdb::ServerReplyList},
+    dataformat::Report,
+    matcher::{self, Field, FieldMismatches},
+};
+
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::convert::TryFrom;
 use std::error::Error;
 use std::fs::File;
 use std::io::BufReader;
 use std::path::PathBuf;
 use std::str::FromStr;
-use clap::{Arg, App};
-use lmdb::{Cursor, Transaction};
-use log::error;
-use rayon::prelude::*;
-use respdiff::{self, config::Config, database::{self, answersdb::ServerReplyList}, dataformat::Report, matcher::{self, Field, FieldMismatches}};
-use serde_ini;
 
 struct Args {
     config: Config,
@@ -23,21 +29,27 @@ struct Args {
 fn parse_args() -> Result<Args, respdiff::Error> {
     let matches = App::new("Respdiff: Msgdiff")
         .about("find differences between answers")
-        .arg(Arg::with_name("ENVDIR")
-            .help("LMDB environment directory")
-            .required(true))
-        .arg(Arg::with_name("config")
-            .help("config file path")
-            .short("c")
-            .long("config")
-            .value_name("FILE")
-            .takes_value(true))
-        .arg(Arg::with_name("datafile")
-            .help("JSON report file")
-            .short("d")
-            .long("datafile")
-            .value_name("FILE")
-            .takes_value(true))
+        .arg(
+            Arg::with_name("ENVDIR")
+                .help("LMDB environment directory")
+                .required(true),
+        )
+        .arg(
+            Arg::with_name("config")
+                .help("config file path")
+                .short("c")
+                .long("config")
+                .value_name("FILE")
+                .takes_value(true),
+        )
+        .arg(
+            Arg::with_name("datafile")
+                .help("JSON report file")
+                .short("d")
+                .long("datafile")
+                .value_name("FILE")
+                .takes_value(true),
+        )
         .get_matches();
 
     let envdir: PathBuf = matches.value_of("ENVDIR").unwrap().into();
@@ -56,46 +68,46 @@ fn parse_args() -> Result<Args, respdiff::Error> {
                     let mut path = envdir.clone();
                     path.push("report.json");
                     path
-                },
+                }
             }
         },
-        envdir: envdir,
+        envdir,
     })
 }
 
 fn msgdiff() -> Result<(), Box<dyn Error>> {
     let args = parse_args()?;
+    let mut report = Report::new();
 
     let env = match database::open_env(&args.envdir) {
         Ok(env) => env,
         Err(e) => {
             error!("failed to open LMDB environment: {:?}", e);
             std::process::exit(1);
-        },
+        }
     };
 
-    let adb = database::open_db(&env, &database::answersdb::NAME, false)?;
+    let adb = database::open_db(&env, database::answersdb::NAME, false)?;
     {
         let txn = env.begin_ro_txn()?;
         let mut cur = txn.open_ro_cursor(adb)?;
 
-        let reply_lists: Vec<_>= cur.iter().map(|res| {
-            match res {
-                Ok(item) => {
-                    match ServerReplyList::try_from(item) {
-                        Ok(reply_list) => reply_list,
-                        Err(e) => {
-                            error!("{}", e);
-                            std::process::exit(1);
-                        }
+        let reply_lists: Vec<_> = cur
+            .iter()
+            .map(|res| match res {
+                Ok(item) => match ServerReplyList::try_from(item) {
+                    Ok(reply_list) => reply_list,
+                    Err(e) => {
+                        error!("{}", e);
+                        std::process::exit(1);
                     }
                 },
                 Err(e) => {
                     error!("{}", respdiff::Error::Database(e));
                     std::process::exit(1);
                 }
-            }
-        }).collect();
+            })
+            .collect();
 
         // TODO readability: refactor into func
         if args.config.servers.len() < 2 {
@@ -103,11 +115,15 @@ fn msgdiff() -> Result<(), Box<dyn Error>> {
             std::process::exit(1);
         }
         let target = &args.config.diff.target;
-        let i_target = args.config.servers
+        let i_target = args
+            .config
+            .servers
             .iter()
             .position(|x| x == target)
             .ok_or(respdiff::Error::InvalidServerName)?;
-        let i_others = args.config.servers
+        let i_others = args
+            .config
+            .servers
             .iter()
             .enumerate()
             .filter_map(|(i, s)| {
@@ -138,8 +154,9 @@ fn msgdiff() -> Result<(), Box<dyn Error>> {
                     let diff = matcher::compare(
                         &reply_list.replies[*j],
                         &reply_list.replies[*k],
-                        &args.config.diff.criteria);
-                    if diff.len() > 0 {
+                        &args.config.diff.criteria,
+                    );
+                    if !diff.is_empty() {
                         return Some(reply_list.key);
                     }
                 }
@@ -147,12 +164,15 @@ fn msgdiff() -> Result<(), Box<dyn Error>> {
             })
             .collect::<BTreeSet<u32>>();
 
-        let diffs: BTreeMap<_, _> = reply_lists.par_iter().filter_map(|reply_list| {
+        let diffs: BTreeMap<_, _> = reply_lists
+            .par_iter()
+            .filter_map(|reply_list| {
                 let diff = matcher::compare(
                     &reply_list.replies[i_cmp_target.0],
                     &reply_list.replies[i_cmp_target.1],
-                    &args.config.diff.criteria);
-                if diff.len() > 0 {
+                    &args.config.diff.criteria,
+                );
+                if !diff.is_empty() {
                     return Some((reply_list.key, diff));
                 }
                 None
@@ -171,32 +191,45 @@ fn msgdiff() -> Result<(), Box<dyn Error>> {
                     None => {
                         target_disagreements.insert(field, HashMap::new());
                         target_disagreements.get_mut(&field).unwrap()
-                    },
+                    }
                 };
                 let queries = match mismatches.get_mut(&mismatch) {
                     Some(queries) => queries,
                     None => {
                         mismatches.insert(mismatch.clone(), BTreeSet::new());
                         mismatches.get_mut(&mismatch).unwrap()
-                    },
+                    }
                 };
                 queries.insert(key);
             }
         }
 
-        let mut report = Report::new();
         report.set_others_disagree(&others_disagreements);
         report.set_target_disagrees(target_disagreements);
-
-        // TODO obtain this data from DB
-        report.start_time = 1628173617;
-        report.end_time = 1628174644;
-        report.total_queries = 616341;
-        report.total_answers = 616341;
-
-        let out = File::create(args.datafile)?;  // TODO maybe check if exists
-        serde_json::to_writer(&out, &report)?;
     }
+
+    {
+        let mdb = database::open_db(&env, database::metadb::NAME, false)?;
+        let txn = env.begin_ro_txn()?;
+
+        report.start_time = database::metadb::read_start_time(mdb, &txn)?;
+        report.end_time = database::metadb::read_end_time(mdb, &txn)?;
+    }
+    // TODO is there better way to commit txn besides using a command block?
+    {
+        let qdb = database::open_db(&env, database::queriesdb::NAME, false)?;
+        let txn = env.begin_ro_txn()?;
+        let mut cur = txn.open_ro_cursor(qdb)?;
+        report.total_queries = cur.iter().count() as u64;
+    }
+    {
+        let txn = env.begin_ro_txn()?;
+        let mut cur = txn.open_ro_cursor(adb)?;
+        report.total_answers = cur.iter().count() as u64;
+    }
+
+    let out = File::create(args.datafile)?; // TODO maybe check if exists
+    serde_json::to_writer(&out, &report)?;
 
     Ok(())
 }
@@ -205,10 +238,10 @@ fn main() {
     env_logger::init();
 
     match msgdiff() {
-        Ok(_) => {},
+        Ok(_) => {}
         Err(e) => {
             error!("{}", e);
             std::process::exit(1);
-        },
+        }
     };
 }

@@ -1,7 +1,7 @@
-use lmdb::{DatabaseFlags, Database, Environment, Error as LmdbError};
+use lmdb::{Database, DatabaseFlags, Environment, Error as LmdbError};
 use std::path::Path;
 
-use crate::{Result, Error};
+use crate::{Error, Result};
 
 // Version string of supported respdiff db.
 const BIN_FORMAT_VERSION: &str = "2018-05-21";
@@ -10,8 +10,8 @@ const BIN_FORMAT_VERSION: &str = "2018-05-21";
 pub fn open_env(dir: &Path) -> Result<Environment> {
     Ok(Environment::new()
         .set_max_dbs(5)
-        .set_map_size(10 * 1024_usize.pow(3))     // 10 G
-        .set_max_readers(384)               // TODO: may need increasing?
+        .set_map_size(10 * 1024_usize.pow(3)) // 10 G
+        .set_max_readers(384) // TODO: may need increasing?
         .open(dir)?)
 }
 
@@ -35,16 +35,21 @@ pub fn exists_db(env: &Environment, name: &str) -> Result<bool> {
 
 // Functions to work with the "meta" database.
 pub mod metadb {
+    use crate::{error::DbFormatError, Error, Result};
     use byteorder::{ByteOrder, LittleEndian};
     use lmdb::{Database, RoTransaction, RwTransaction, Transaction, WriteFlags};
     use std::convert::TryInto;
     use std::time::SystemTime;
-    use crate::{Result, Error, error::DbFormatError};
 
     pub const NAME: &str = "meta";
 
     pub fn write_version(db: Database, txn: &mut RwTransaction) -> Result<()> {
-        Ok(txn.put(db, b"version", &super::BIN_FORMAT_VERSION, WriteFlags::empty())?)
+        Ok(txn.put(
+            db,
+            b"version",
+            &super::BIN_FORMAT_VERSION,
+            WriteFlags::empty(),
+        )?)
     }
 
     pub fn write_start_time(db: Database, txn: &mut RwTransaction) -> Result<()> {
@@ -61,6 +66,16 @@ pub mod metadb {
         Ok(txn.put(db, b"start_time", &bytes, WriteFlags::empty())?)
     }
 
+    pub fn read_start_time(db: Database, txn: &RoTransaction) -> Result<u32> {
+        let time = txn.get(db, b"start_time")?;
+        Ok(LittleEndian::read_u32(time))
+    }
+
+    pub fn read_end_time(db: Database, txn: &RoTransaction) -> Result<u32> {
+        let time = txn.get(db, b"end_time")?;
+        Ok(LittleEndian::read_u32(time))
+    }
+
     pub fn check_version(db: Database, txn: &RoTransaction) -> Result<String> {
         let version = txn.get(db, b"version")?;
         let version = String::from_utf8(version.to_vec())?;
@@ -75,9 +90,8 @@ pub mod metadb {
     pub fn write_servers(
         db: Database,
         txn: &mut RwTransaction,
-        servers: Vec<String>
-    ) -> Result<()>
-    {
+        servers: Vec<String>,
+    ) -> Result<()> {
         let mut bytes = [0; 4];
         LittleEndian::write_u32(&mut bytes, servers.len() as u32);
         txn.put(db, b"servers", &bytes, WriteFlags::empty())?;
@@ -90,9 +104,9 @@ pub mod metadb {
 }
 
 pub mod queriesdb {
-    use std::convert::TryFrom;
     use byteorder::{ByteOrder, LittleEndian};
     use log::warn;
+    use std::convert::TryFrom;
 
     pub const NAME: &str = "queries";
 
@@ -107,30 +121,28 @@ pub mod queriesdb {
 
         fn try_from(item: lmdb::Result<(&[u8], &[u8])>) -> Result<Self, Self::Error> {
             match item {
-                Ok((key, val)) => {
-                    Ok(Query {
-                        key: LittleEndian::read_u32(&key),
-                        wire: val.to_vec(),
-                    })
-                },
+                Ok((key, val)) => Ok(Query {
+                    key: LittleEndian::read_u32(key),
+                    wire: val.to_vec(),
+                }),
                 Err(e) => {
                     warn!("failed to read query from db");
                     Err(e)
-                },
+                }
             }
         }
     }
 }
 
 pub mod answersdb {
+    use crate::error::DbFormatError;
+    use byteorder::{ByteOrder, LittleEndian};
+    use domain::base::{iana::rtype::Rtype, octets::ParseError, Message};
+    use domain::rdata::Rrsig;
     use std::collections::BTreeSet;
     use std::convert::TryFrom;
-    use std::time::Duration;
     use std::fmt;
-    use byteorder::{ByteOrder, LittleEndian};
-    use domain::base::{iana::rtype::Rtype, Message, octets::ParseError};
-    use domain::rdata::Rrsig;
-    use crate::error::DbFormatError;
+    use std::time::Duration;
     pub const NAME: &str = "answers";
 
     #[derive(Debug, PartialEq, Eq, Clone)]
@@ -173,17 +185,16 @@ pub mod answersdb {
     }
     impl PartialEq for DnsReply {
         fn eq(&self, other: &Self) -> bool {
-            self.delay == other.delay &&
-            self.message.as_octets() == other.message.as_octets()
+            self.delay == other.delay && self.message.as_octets() == other.message.as_octets()
         }
     }
     impl Eq for DnsReply {}
     impl fmt::Debug for DnsReply {
         fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
             f.debug_struct("DnsReply")
-             .field("delay", &self.delay)
-             .field("msgid", &self.message.header().id())
-             .finish_non_exhaustive()
+                .field("delay", &self.delay)
+                .field("msgid", &self.message.header().id())
+                .finish_non_exhaustive()
         }
     }
 
@@ -205,9 +216,9 @@ pub mod answersdb {
 
             let mut i = 0;
             while (i + 6) <= buf.len() {
-                let delay = LittleEndian::read_u32(&buf[i..i+4]);
+                let delay = LittleEndian::read_u32(&buf[i..i + 4]);
                 i += 4;
-                let len = LittleEndian::read_u16(&buf[i..i+2]) as usize;
+                let len = LittleEndian::read_u16(&buf[i..i + 2]) as usize;
                 i += 2;
 
                 if delay == u32::MAX {
@@ -223,7 +234,7 @@ pub mod answersdb {
                     return Err(DbFormatError::ReplyMissingData);
                 }
 
-                let wire: Vec<u8> = Vec::from(&buf[i..i+len]);
+                let wire: Vec<u8> = Vec::from(&buf[i..i + len]);
                 i += len;
 
                 match Message::from_octets(wire) {
@@ -232,7 +243,7 @@ pub mod answersdb {
                             delay: Duration::from_micros(delay as u64),
                             message: msg,
                         }));
-                    },
+                    }
                     Err(_) => {
                         replies.push(ServerReply::Malformed);
                     }
@@ -240,10 +251,10 @@ pub mod answersdb {
             }
 
             if i == buf.len() {
-                return Ok(ServerReplyList{
-                    key: LittleEndian::read_u32(&key),
-                    replies: replies,
-                });
+                Ok(ServerReplyList {
+                    key: LittleEndian::read_u32(key),
+                    replies,
+                })
             } else {
                 Err(DbFormatError::ReplyMissingData)
             }
@@ -253,11 +264,11 @@ pub mod answersdb {
 
 #[cfg(test)]
 mod tests {
-    use tempdir::TempDir;
-    use lmdb::{Error as LmdbError, Transaction};
     use super::*;
-    use std::convert::TryFrom;
     use crate::error::DbFormatError;
+    use lmdb::{Error as LmdbError, Transaction};
+    use std::convert::TryFrom;
+    use tempdir::TempDir;
 
     #[test]
     fn metadb_version() {
@@ -289,12 +300,15 @@ mod tests {
         let _d4 = open_db(&env, "d4", true).unwrap();
         let _d5 = open_db(&env, "d5", true).unwrap();
 
-        assert_eq!(exists_db(&env, "x"), Err(Error::Database(LmdbError::DbsFull)));
+        assert_eq!(
+            exists_db(&env, "x"),
+            Err(Error::Database(LmdbError::DbsFull))
+        );
     }
 
     #[test]
     fn parse_serverreplylist() {
-        use answersdb::{ServerReplyList, ServerReply, DnsReply};
+        use answersdb::{DnsReply, ServerReply, ServerReplyList};
         use domain::base::Message;
         use std::time::Duration;
 
@@ -302,25 +316,26 @@ mod tests {
         let empty = vec![];
         assert_eq!(
             ServerReplyList::try_from((key.as_slice(), empty.as_slice())),
-            Ok(ServerReplyList{
+            Ok(ServerReplyList {
                 key: 0x42,
                 replies: vec![]
-            }));
+            })
+        );
 
         let timeout = vec![0xff, 0xff, 0xff, 0xff, 0x00, 0x00];
         assert_eq!(
             ServerReplyList::try_from((key.as_slice(), timeout.as_slice())),
             Ok(ServerReplyList {
                 key: 0x42,
-                replies: vec![
-                    ServerReply::Timeout,
-                ],
-            }));
+                replies: vec![ServerReply::Timeout,],
+            })
+        );
 
         let missingdata = vec![0x00, 0x00, 0x00, 0x00, 0x01, 0x00];
         assert_eq!(
             ServerReplyList::try_from((key.as_slice(), missingdata.as_slice())),
-            Err(DbFormatError::ReplyMissingData.into()));
+            Err(DbFormatError::ReplyMissingData.into())
+        );
 
         let shortdata = vec![0x00, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00];
         assert_eq!(
@@ -328,10 +343,12 @@ mod tests {
             Ok(ServerReplyList {
                 key: 0x42,
                 replies: vec![ServerReply::Malformed],
-            }));
+            })
+        );
 
-        let wire = vec![0x01, 0x02, 0x03, 0x04, 0x05, 0x06,
-                        0x07, 0x08, 0x09, 0x0a, 0x0b, 0x0c];
+        let wire = vec![
+            0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0a, 0x0b, 0x0c,
+        ];
         let header = vec![0x00, 0x00, 0x00, 0x00, 0x0c, 0x00];
         let mut data = header.to_owned();
         data.append(&mut wire.to_owned());
@@ -344,7 +361,8 @@ mod tests {
             Ok(ServerReplyList {
                 key: 0x42,
                 replies: vec![ServerReply::Data(dnsreply.to_owned())],
-            }));
+            })
+        );
 
         data.append(&mut timeout.to_owned());
         let header3 = vec![0x01, 0x00, 0x00, 0x00, 0x0c, 0x00];
@@ -362,6 +380,7 @@ mod tests {
                         message: Message::from_octets(wire.to_owned()).unwrap(),
                     }),
                 ],
-            }));
+            })
+        );
     }
 }

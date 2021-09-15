@@ -1,7 +1,6 @@
-use lmdb;
+use serde_ini::de;
 use std::io;
 use std::string::FromUtf8Error;
-use serde_ini::de;
 use thiserror::Error;
 
 #[derive(Error, Debug)]

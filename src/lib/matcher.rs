@@ -1,9 +1,14 @@
-use serde::{Serialize, Deserialize};
-use std::collections::{BTreeSet, HashSet, HashMap};
+use crate::config::DiffCriteria; // TODO move?
+use crate::database::answersdb::{DnsReply, ServerReply}; // TODO weird location
+use domain::base::{
+    header::Flags,
+    iana,
+    name::{Dname, ToDname},
+    question::Question,
+};
+use serde::{Deserialize, Serialize};
+use std::collections::{BTreeSet, HashMap, HashSet};
 use std::fmt;
-use crate::database::answersdb::{DnsReply, ServerReply};  // TODO weird location
-use crate::config::DiffCriteria;  // TODO move?
-use domain::base::{iana, header::Flags, name::{Dname, ToDname}, question::Question};
 
 #[derive(Serialize, Deserialize, Debug, PartialEq, Eq, PartialOrd, Ord, Copy, Clone, Hash)]
 #[serde(rename_all = "lowercase")]
@@ -19,7 +24,7 @@ pub enum Field {
 }
 
 impl From<&Mismatch> for Field {
-    fn from (mismatch: &Mismatch) -> Field {
+    fn from(mismatch: &Mismatch) -> Field {
         match mismatch {
             Mismatch::TimeoutExpected => Field::Timeout,
             Mismatch::TimeoutGot => Field::Timeout,
@@ -50,21 +55,21 @@ impl Matcher for DiffCriteria {
                 if expected != got {
                     return Some(Mismatch::Opcode(expected, got));
                 }
-            },
+            }
             DiffCriteria::Rcode => {
                 let expected = expected.message.header().rcode();
                 let got = got.message.header().rcode();
                 if expected != got {
                     return Some(Mismatch::Rcode(expected, got));
                 }
-            },
+            }
             DiffCriteria::Flags => {
                 let expected: Flags = expected.message.header().flags();
                 let got: Flags = got.message.header().flags();
                 if expected != got {
                     return Some(Mismatch::Flags(expected, got));
                 }
-            },
+            }
             DiffCriteria::Question => {
                 let expected = {
                     if expected.message.question().count() != 1 {
@@ -98,13 +103,12 @@ impl Matcher for DiffCriteria {
                         Question::new(
                             expected.qname().to_vec(),
                             expected.qtype(),
-                            expected.qclass()),
-                        Question::new(
-                            got.qname().to_vec(),
-                            got.qtype(),
-                            got.qclass())));
+                            expected.qclass(),
+                        ),
+                        Question::new(got.qname().to_vec(), got.qtype(), got.qclass()),
+                    ));
                 }
-            },
+            }
             DiffCriteria::AnswerTypes => {
                 let expected = match expected.answer_rtypes() {
                     Ok(val) => val,
@@ -117,7 +121,7 @@ impl Matcher for DiffCriteria {
                 if expected != got {
                     return Some(Mismatch::AnswerTypes(expected, got));
                 }
-            },
+            }
             DiffCriteria::AnswerRrsigs => {
                 let expected = match expected.answer_rrsig_covered() {
                     Ok(val) => val,
@@ -130,7 +134,7 @@ impl Matcher for DiffCriteria {
                 if expected != got {
                     return Some(Mismatch::AnswerRrsigs(expected, got));
                 }
-            },
+            }
         }
         None
     }
@@ -213,35 +217,34 @@ impl fmt::Display for Mismatch {
 pub fn compare(
     expected: &ServerReply,
     got: &ServerReply,
-    criteria: &Vec<DiffCriteria>,
-    ) -> HashSet<Mismatch>
-{
+    criteria: &[DiffCriteria],
+) -> HashSet<Mismatch> {
     let mut mismatches = HashSet::new();
 
     match (expected, got) {
-        (&ServerReply::Timeout, &ServerReply::Timeout) => {},
+        (&ServerReply::Timeout, &ServerReply::Timeout) => {}
         (&ServerReply::Timeout, _) => {
             mismatches.insert(Mismatch::TimeoutExpected);
-        },
+        }
         (_, &ServerReply::Timeout) => {
             mismatches.insert(Mismatch::TimeoutGot);
-        },
+        }
         (&ServerReply::Malformed, &ServerReply::Malformed) => {
             mismatches.insert(Mismatch::MalformedBoth);
-        },
+        }
         (&ServerReply::Malformed, _) => {
             mismatches.insert(Mismatch::MalformedExpected);
         }
         (_, &ServerReply::Malformed) => {
             mismatches.insert(Mismatch::MalformedGot);
-        },
+        }
         (&ServerReply::Data(ref expected), &ServerReply::Data(ref got)) => {
             for crit in criteria {
                 if let Some(mismatch) = crit.mismatch(expected, got) {
                     mismatches.insert(mismatch);
                 }
             }
-        },
+        }
     };
 
     mismatches
@@ -252,16 +255,16 @@ pub type FieldMismatches = HashMap<Mismatch, BTreeSet<u32>>;
 #[cfg(test)]
 mod tests {
     use super::*;
-    use domain::base::{Message, MessageBuilder, iana::rtype::Rtype};
-    use std::time::Duration;
+    use domain::base::{iana::rtype::Rtype, Message, MessageBuilder};
     use std::str::FromStr;
+    use std::time::Duration;
 
     fn reply_noerror() -> ServerReply {
         reply_from_msg(MessageBuilder::new_vec().into_message())
     }
 
     fn reply_from_msg(message: Message<Vec<u8>>) -> ServerReply {
-        ServerReply::Data(DnsReply{
+        ServerReply::Data(DnsReply {
             delay: Duration::from_micros(0),
             message: message,
         })
@@ -281,7 +284,11 @@ mod tests {
         assert_eq!(res.len(), 1);
         assert!(res.contains(&Mismatch::TimeoutExpected));
 
-        let res = compare(&ServerReply::Timeout, &reply_noerror(), &vec![DiffCriteria::Opcode]);
+        let res = compare(
+            &ServerReply::Timeout,
+            &reply_noerror(),
+            &vec![DiffCriteria::Opcode],
+        );
         assert_eq!(res.len(), 1);
         assert!(res.contains(&Mismatch::TimeoutExpected));
     }
@@ -381,20 +388,23 @@ mod tests {
         assert_eq!(res.len(), 1);
         assert!(res.contains(&Mismatch::Flags(
             Flags::from_str("").unwrap(),
-            Flags::from_str("AA").unwrap())));
+            Flags::from_str("AA").unwrap()
+        )));
     }
 
     #[test]
     fn compare_question() {
         let crit = vec![DiffCriteria::Question];
         let mut msg1 = MessageBuilder::new_vec().question();
-        msg1.push(Question::new_in(Dname::root_vec(), Rtype::A)).unwrap();
+        msg1.push(Question::new_in(Dname::root_vec(), Rtype::A))
+            .unwrap();
         let r1 = &reply_from_msg(msg1.into_message());
         let res = compare(r1, r1, &crit);
         assert_eq!(res.len(), 0);
 
         let mut msg2 = MessageBuilder::new_vec().question();
-        msg2.push(Question::new_in(Dname::root_vec(), Rtype::Aaaa)).unwrap();
+        msg2.push(Question::new_in(Dname::root_vec(), Rtype::Aaaa))
+            .unwrap();
         let r2 = &reply_from_msg(msg2.into_message());
 
         let res = compare(r1, r2, &crit);
@@ -402,71 +412,94 @@ mod tests {
         assert!(res.contains(&Mismatch::Question(
             Question::new_in(Dname::root_vec(), Rtype::A),
             Question::new_in(Dname::root_vec(), Rtype::Aaaa),
-            )));
+        )));
     }
 
     #[test]
     fn compare_answertypes() {
-        use domain::rdata::{A, Aaaa};
         use domain::base::iana::rtype::Rtype;
+        use domain::rdata::{Aaaa, A};
         use std::net::Ipv6Addr;
 
         let crit = vec![DiffCriteria::AnswerTypes];
         let mut msg1 = MessageBuilder::new_vec().answer();
-        msg1.push((Dname::root_ref(), 86400, A::from_octets(192, 0, 2, 1))).unwrap();
+        msg1.push((Dname::root_ref(), 86400, A::from_octets(192, 0, 2, 1)))
+            .unwrap();
         let r1 = &reply_from_msg(msg1.into_message());
         let res = compare(r1, r1, &crit);
         assert_eq!(res.len(), 0);
 
         let mut msg2 = MessageBuilder::new_vec().answer();
-        msg2.push((Dname::vec_from_str("test.").unwrap(), 3600, A::from_octets(192, 0, 2, 2))).unwrap();
-        msg2.push((Dname::vec_from_str("test.").unwrap(), 3600, A::from_octets(192, 0, 2, 3))).unwrap();
+        msg2.push((
+            Dname::vec_from_str("test.").unwrap(),
+            3600,
+            A::from_octets(192, 0, 2, 2),
+        ))
+        .unwrap();
+        msg2.push((
+            Dname::vec_from_str("test.").unwrap(),
+            3600,
+            A::from_octets(192, 0, 2, 3),
+        ))
+        .unwrap();
         let r2 = &reply_from_msg(msg2.into_message());
         let res = compare(r1, r2, &crit);
-        assert_eq!(res.len(), 0);  // ensure only rtype is compared and repetition doesn't matter
+        assert_eq!(res.len(), 0); // ensure only rtype is compared and repetition doesn't matter
 
         let mut msg3 = MessageBuilder::new_vec().answer();
-        msg3.push((Dname::root_ref(), 86400, Aaaa::new(Ipv6Addr::LOCALHOST))).unwrap();
+        msg3.push((Dname::root_ref(), 86400, Aaaa::new(Ipv6Addr::LOCALHOST)))
+            .unwrap();
         let r3 = &reply_from_msg(msg3.into_message());
         let res = compare(r2, r3, &crit);
         assert_eq!(res.len(), 1);
         assert!(res.contains(&Mismatch::AnswerTypes(
-            BTreeSet::from([Rtype::A]),
-            BTreeSet::from([Rtype::Aaaa]),
-            )));
+            [Rtype::A].iter().cloned().collect(),
+            [Rtype::Aaaa].iter().cloned().collect()
+        )));
     }
 
     #[test]
     fn compare_answerrrsigtypes() {
-        use domain::rdata::{A, Rrsig};
         use domain::base::iana::rtype::Rtype;
+        use domain::rdata::{Rrsig, A};
 
         let crit = vec![DiffCriteria::AnswerRrsigs];
         let mut msg1 = MessageBuilder::new_vec().answer();
-        msg1.push((Dname::root_ref(), 86400, A::from_octets(192, 0, 2, 1))).unwrap();
-        msg1.push((Dname::root_ref(), 86400, Rrsig::new(
-            Rtype::Txt,
-            domain::base::iana::secalg::SecAlg::EcdsaP384Sha384,
-            1,
-            1,
-            domain::base::serial::Serial::now(),
-            domain::base::serial::Serial::now(),
-            1,
+        msg1.push((Dname::root_ref(), 86400, A::from_octets(192, 0, 2, 1)))
+            .unwrap();
+        msg1.push((
             Dname::root_ref(),
-            &[0],
-            ))).unwrap();
+            86400,
+            Rrsig::new(
+                Rtype::Txt,
+                domain::base::iana::secalg::SecAlg::EcdsaP384Sha384,
+                1,
+                1,
+                domain::base::serial::Serial::now(),
+                domain::base::serial::Serial::now(),
+                1,
+                Dname::root_ref(),
+                &[0],
+            ),
+        ))
+        .unwrap();
         let r1 = &reply_from_msg(msg1.into_message());
         let res = compare(r1, r1, &crit);
         assert_eq!(res.len(), 0);
 
         let mut msg2 = MessageBuilder::new_vec().answer();
-        msg2.push((Dname::vec_from_str("test.").unwrap(), 3600, A::from_octets(192, 0, 2, 2))).unwrap();
+        msg2.push((
+            Dname::vec_from_str("test.").unwrap(),
+            3600,
+            A::from_octets(192, 0, 2, 2),
+        ))
+        .unwrap();
         let r2 = &reply_from_msg(msg2.into_message());
         let res = compare(r1, r2, &crit);
         assert_eq!(res.len(), 1);
         assert!(res.contains(&Mismatch::AnswerRrsigs(
-            BTreeSet::from([Rtype::Txt]),
-            BTreeSet::from([]),
-            )));
+            [Rtype::Txt].iter().cloned().collect(),
+            [].iter().cloned().collect(),
+        )));
     }
 }
