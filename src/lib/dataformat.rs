@@ -4,8 +4,8 @@ use std::collections::{BTreeMap, BTreeSet};
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Default)]
 pub struct Report {
-    pub start_time: u64,
-    pub end_time: u64,
+    pub start_time: u32,
+    pub end_time: u32,
     pub total_queries: u64,
     pub total_answers: u64,
     other_disagreements: OtherDisagreements,

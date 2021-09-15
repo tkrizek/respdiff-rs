@@ -66,6 +66,16 @@ pub mod metadb {
         Ok(txn.put(db, b"start_time", &bytes, WriteFlags::empty())?)
     }
 
+    pub fn read_start_time(db: Database, txn: &RoTransaction) -> Result<u32> {
+        let time = txn.get(db, b"start_time")?;
+        Ok(LittleEndian::read_u32(time))
+    }
+
+    pub fn read_end_time(db: Database, txn: &RoTransaction) -> Result<u32> {
+        let time = txn.get(db, b"end_time")?;
+        Ok(LittleEndian::read_u32(time))
+    }
+
     pub fn check_version(db: Database, txn: &RoTransaction) -> Result<String> {
         let version = txn.get(db, b"version")?;
         let version = String::from_utf8(version.to_vec())?;

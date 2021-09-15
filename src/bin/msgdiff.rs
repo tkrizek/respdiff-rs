@@ -77,6 +77,7 @@ fn parse_args() -> Result<Args, respdiff::Error> {
 
 fn msgdiff() -> Result<(), Box<dyn Error>> {
     let args = parse_args()?;
+    let mut report = Report::new();
 
     let env = match database::open_env(&args.envdir) {
         Ok(env) => env,
@@ -203,19 +204,25 @@ fn msgdiff() -> Result<(), Box<dyn Error>> {
             }
         }
 
-        let mut report = Report::new();
         report.set_others_disagree(&others_disagreements);
         report.set_target_disagrees(target_disagreements);
-
-        // TODO obtain this data from DB
-        report.start_time = 1628173617;
-        report.end_time = 1628174644;
-        report.total_queries = 616341;
-        report.total_answers = 616341;
-
-        let out = File::create(args.datafile)?; // TODO maybe check if exists
-        serde_json::to_writer(&out, &report)?;
     }
+
+    {
+        let mdb = database::open_db(&env, database::metadb::NAME, false)?;
+        let txn = env.begin_ro_txn()?;
+
+        report.start_time = database::metadb::read_start_time(mdb, &txn)?;
+        report.end_time = database::metadb::read_end_time(mdb, &txn)?;
+    }
+
+
+    // TODO obtain this data from DB
+    report.total_queries = 616341;
+    report.total_answers = 616341;
+
+    let out = File::create(args.datafile)?; // TODO maybe check if exists
+    serde_json::to_writer(&out, &report)?;
 
     Ok(())
 }
