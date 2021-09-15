@@ -215,11 +215,18 @@ fn msgdiff() -> Result<(), Box<dyn Error>> {
         report.start_time = database::metadb::read_start_time(mdb, &txn)?;
         report.end_time = database::metadb::read_end_time(mdb, &txn)?;
     }
-
-
-    // TODO obtain this data from DB
-    report.total_queries = 616341;
-    report.total_answers = 616341;
+    // TODO is there better way to commit txn besides using a command block?
+    {
+        let qdb = database::open_db(&env, database::queriesdb::NAME, false)?;
+        let txn = env.begin_ro_txn()?;
+        let mut cur = txn.open_ro_cursor(qdb)?;
+        report.total_queries = cur.iter().count() as u64;
+    }
+    {
+        let txn = env.begin_ro_txn()?;
+        let mut cur = txn.open_ro_cursor(adb)?;
+        report.total_answers = cur.iter().count() as u64;
+    }
 
     let out = File::create(args.datafile)?; // TODO maybe check if exists
     serde_json::to_writer(&out, &report)?;
