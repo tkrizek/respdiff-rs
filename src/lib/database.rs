@@ -9,7 +9,9 @@ pub type QKey = u32;
 /// Version string of supported respdiff db.
 const BIN_FORMAT_VERSION: &str = "2018-05-21";
 
-// Create an LMDB Environment. Only a single instance can exist in a process.
+/// Create an LMDB Environment.
+///
+/// Only a single instance can exist in a process.
 pub fn open_env(dir: &Path) -> Result<Environment> {
     Ok(Environment::new()
         .set_max_dbs(5)
@@ -18,7 +20,7 @@ pub fn open_env(dir: &Path) -> Result<Environment> {
         .open(dir)?)
 }
 
-// Create or open an LMDB database.
+/// Create or open an LMDB database.
 pub fn open_db(env: &Environment, name: &str, create: bool) -> Result<Database> {
     if create {
         Ok(env.create_db(Some(name), DatabaseFlags::empty())?)
@@ -27,7 +29,7 @@ pub fn open_db(env: &Environment, name: &str, create: bool) -> Result<Database> 
     }
 }
 
-// Check if database exists already.
+/// Check if database exists already.
 pub fn exists_db(env: &Environment, name: &str) -> Result<bool> {
     match env.open_db(Some(name)) {
         Ok(_) => Ok(true),
@@ -36,7 +38,7 @@ pub fn exists_db(env: &Environment, name: &str) -> Result<bool> {
     }
 }
 
-// Functions to work with the "meta" database.
+/// ``meta`` LMDB and its related data & functions
 pub mod metadb {
     use crate::{error::DbFormatError, Error, Result};
     use byteorder::{ByteOrder, LittleEndian};
@@ -44,8 +46,10 @@ pub mod metadb {
     use std::convert::TryInto;
     use std::time::SystemTime;
 
+    /// Meta LMDB database name
     pub const NAME: &str = "meta";
 
+    /// Write binary format version to LMDB.
     pub fn write_version(db: Database, txn: &mut RwTransaction) -> Result<()> {
         Ok(txn.put(
             db,
@@ -55,6 +59,7 @@ pub mod metadb {
         )?)
     }
 
+    /// Write start time when transciever started sending queries to LMDB.
     pub fn write_start_time(db: Database, txn: &mut RwTransaction) -> Result<()> {
         let duration = match SystemTime::now().duration_since(SystemTime::UNIX_EPOCH) {
             Ok(val) => val,
@@ -69,16 +74,22 @@ pub mod metadb {
         Ok(txn.put(db, b"start_time", &bytes, WriteFlags::empty())?)
     }
 
+    /// Read the transciever's start time.
     pub fn read_start_time(db: Database, txn: &RoTransaction) -> Result<u32> {
         let time = txn.get(db, b"start_time")?;
         Ok(LittleEndian::read_u32(time))
     }
 
+    /// Read the transceiver's end time.
     pub fn read_end_time(db: Database, txn: &RoTransaction) -> Result<u32> {
         let time = txn.get(db, b"end_time")?;
         Ok(LittleEndian::read_u32(time))
     }
 
+    /// Check binary format version.
+    ///
+    /// Perform a check that the binary version of particular LMDB is compatible
+    /// with the expected version.
     pub fn check_version(db: Database, txn: &RoTransaction) -> Result<String> {
         let version = txn.get(db, b"version")?;
         let version = String::from_utf8(version.to_vec())?;
@@ -90,6 +101,7 @@ pub mod metadb {
         }
     }
 
+    /// Write a server list to LMDB.
     pub fn write_servers(
         db: Database,
         txn: &mut RwTransaction,
@@ -106,17 +118,25 @@ pub mod metadb {
     }
 }
 
+/// ``queries`` LMDB and its related data & functions
 pub mod queriesdb {
     use byteorder::{ByteOrder, LittleEndian};
-    use crate::database::QKey;
+    use crate::QKey;
     use log::warn;
     use std::convert::TryFrom;
 
+    /// Queries LMDB database name
     pub const NAME: &str = "queries";
 
+    /// Query stored in LMDB.
+    ///
+    /// Each query is identified by `QKey`, which is the key under which it is stored in the
+    /// ``queries`` database.
     #[derive(Debug)]
     pub struct Query {
+        /// Identifier which is used in the ``queries`` LMDB.
         pub key: QKey,
+        /// Binary data of the DNS message.
         pub wire: Vec<u8>,
     }
 
@@ -138,6 +158,7 @@ pub mod queriesdb {
     }
 }
 
+/// ``answers`` LMDB and its related data & functions
 pub mod answersdb {
     use crate::{
         database::QKey,
@@ -150,18 +171,30 @@ pub mod answersdb {
     use std::convert::TryFrom;
     use std::fmt;
     use std::time::Duration;
+
+    /// Answers LMDB database name
     pub const NAME: &str = "answers";
 
+    /// Response from a server.
     #[derive(Debug, PartialEq, Eq, Clone)]
-    pub enum ServerReply {
+    pub enum ServerReply {  // TODO refactor rename -> ServerResponse
+        /// No response was received from the server in time.
         Timeout,
+        /// Response was received, but it isn't a DNS message.
         Malformed,
+        /// Response was received and it seems to be a DNS message.
         Data(DnsReply),
     }
 
+    /// DNS message reply from a server.
     #[derive(Clone)]
     pub struct DnsReply {
+        /// The time it took for the reply to arrive after sending the query.
         pub delay: Duration,
+        /// The DNS message received in the the reply.
+        ///
+        /// The content is only guaranteed to have a DNS header, but the message itself wasn't
+        /// parsed and isn't guaranteed to be a valid DNS message.
         pub message: Message<Vec<u8>>,
     }
     impl DnsReply {
@@ -205,12 +238,16 @@ pub mod answersdb {
         }
     }
 
+    /// A set of responses from all servers for a particular query.
     #[derive(Debug, PartialEq, Eq)]
-    pub struct ServerReplyList {
+    pub struct ServerReplyList {  // TODO ServerResponseList
+        /// Query identifier.
         pub key: QKey,
+        /// List of responses in the exact order as read from LMDB.
         pub replies: Vec<ServerReply>,
     }
 
+    /// Try to parse servers responses directly from LMDB binary data.
     impl TryFrom<(&[u8], &[u8])> for ServerReplyList {
         type Error = DbFormatError;
 

@@ -5,6 +5,7 @@ use crate::{
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
 
+/// JSON datafile report
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Default)]
 pub struct Report {
     pub start_time: u32,
@@ -18,19 +19,25 @@ pub struct Report {
 }
 
 impl Report {
+    /// Create new Report
     pub fn new() -> Self {
         Default::default()
     }
 
+    /// Return a set of queries on which other servers (besides target) disagree
+    /// (upstream_unstable)
     pub fn others_disagree(&self) -> BTreeSet<QKey> {
         self.other_disagreements.queries.clone()
     }
 
+    /// Set a set of queries that others disagree on
     pub fn set_others_disagree(&mut self, queries: &BTreeSet<QKey>) {
         self.other_disagreements.queries = queries.clone();
     }
 
     // FIXME: no way to retrieve target_disagrees - not needed right now
+
+    /// Return a collection of target mismatches for each field.
     pub fn set_target_disagrees(&mut self, dis: BTreeMap<Field, FieldMismatches>) {
         self.target_disagreements.fields = BTreeMap::new();
         for (field, fmismatches) in dis {
@@ -65,6 +72,7 @@ struct FieldDisagreements {
     mismatches: Vec<MismatchQueries>,
 }
 
+/// Collection of queries that share the same mismatch.
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Default)]
 pub struct MismatchQueries {
     pub exp_val: String,

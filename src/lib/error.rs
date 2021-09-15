@@ -3,6 +3,7 @@ use std::io;
 use std::string::FromUtf8Error;
 use thiserror::Error;
 
+/// Error for respdiff operation.
 #[derive(Error, Debug)]
 pub enum Error {
     #[error("LMDB error: {0}")]

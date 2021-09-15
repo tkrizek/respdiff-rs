@@ -1,5 +1,5 @@
 use crate::{
-    config::DiffCriteria,
+    DiffCriteria,
     database::{
         answersdb::{DnsReply, ServerReply}, // TODO weird location
         QKey
@@ -15,6 +15,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::{BTreeSet, HashMap, HashSet};
 use std::fmt;
 
+/// Type of mismatch
 #[derive(Serialize, Deserialize, Debug, PartialEq, Eq, PartialOrd, Ord, Copy, Clone, Hash)]
 #[serde(rename_all = "lowercase")]
 pub enum Field {
@@ -161,6 +162,7 @@ fn answerrrsigs_str(types: &BTreeSet<iana::rtype::Rtype>) -> String {
         .join(" ")
 }
 
+/// Single query mismatch
 #[derive(Debug, PartialEq, Eq, Clone, Hash)]
 pub enum Mismatch {
     TimeoutExpected,
@@ -219,6 +221,9 @@ impl fmt::Display for Mismatch {
     }
 }
 
+/// Compare two replies by selected criteria.
+///
+/// This function finds all mismatches within the given criteria.
 pub fn compare(
     expected: &ServerReply,
     got: &ServerReply,
@@ -255,6 +260,7 @@ pub fn compare(
     mismatches
 }
 
+/// Collection of queries for each mismatch in a given field.
 pub type FieldMismatches = HashMap<Mismatch, BTreeSet<QKey>>;
 
 #[cfg(test)]
