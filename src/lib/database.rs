@@ -1,7 +1,7 @@
 use lmdb::{Database, DatabaseFlags, Environment, Error as LmdbError};
 use std::path::Path;
 
-use crate::{Error, Result};
+use crate::error::Error;
 
 /// 32 bit integer representing a key under which the query is stored in LMDB.
 pub type QKey = u32;

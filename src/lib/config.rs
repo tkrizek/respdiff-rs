@@ -1,4 +1,4 @@
-use crate::Error;
+use crate::error::Error;
 use serde::{Deserialize, Deserializer};
 use std::collections::HashMap;
 use std::convert::{TryFrom, TryInto};

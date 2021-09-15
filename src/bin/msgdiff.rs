@@ -26,7 +26,7 @@ struct Args {
     envdir: PathBuf,
 }
 
-fn parse_args() -> Result<Args, respdiff::Error> {
+fn parse_args() -> Result<Args, Error> {
     let matches = App::new("Respdiff: Msgdiff")
         .about("find differences between answers")
         .arg(
@@ -57,9 +57,9 @@ fn parse_args() -> Result<Args, respdiff::Error> {
     Ok(Args {
         config: {
             let path = matches.value_of("config").unwrap_or("respdiff.cfg");
-            let file = File::open(path).map_err(respdiff::Error::ConfigFile)?;
+            let file = File::open(path).map_err(Error::ConfigFile)?;
             let buf = BufReader::new(file);
-            serde_ini::from_bufread::<_, Config>(buf).map_err(respdiff::Error::ConfigRead)?
+            serde_ini::from_bufread::<_, Config>(buf).map_err(Error::ConfigRead)?
         },
         datafile: {
             match matches.value_of("datafile") {
@@ -75,7 +75,7 @@ fn parse_args() -> Result<Args, respdiff::Error> {
     })
 }
 
-fn msgdiff() -> Result<(), Box<dyn Error>> {
+fn msgdiff() -> Result<(), Box<dyn StdError>> {  // TODO can we use respdiff error?
     let args = parse_args()?;
     let mut report = Report::new();
 
@@ -87,7 +87,7 @@ fn msgdiff() -> Result<(), Box<dyn Error>> {
         }
     };
 
-    let adb = database::open_db(&env, database::answersdb::NAME, false)?;
+    let adb = database::open_db(&env, answersdb::NAME, false)?;
     {
         let txn = env.begin_ro_txn()?;
         let mut cur = txn.open_ro_cursor(adb)?;
@@ -103,7 +103,7 @@ fn msgdiff() -> Result<(), Box<dyn Error>> {
                     }
                 },
                 Err(e) => {
-                    error!("{}", respdiff::Error::Database(e));
+                    error!("{}", Error::Database(e));
                     std::process::exit(1);
                 }
             })
@@ -120,7 +120,7 @@ fn msgdiff() -> Result<(), Box<dyn Error>> {
             .servers
             .iter()
             .position(|x| x == target)
-            .ok_or(respdiff::Error::InvalidServerName)?;
+            .ok_or(Error::InvalidServerName)?;
         let i_others = args
             .config
             .servers
