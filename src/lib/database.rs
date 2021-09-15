@@ -3,9 +3,6 @@ use std::path::Path;
 
 use crate::error::Error;
 
-/// 32 bit integer representing a key under which the query is stored in LMDB.
-pub type QKey = u32;
-
 /// Version string of supported respdiff db.
 const BIN_FORMAT_VERSION: &str = "2018-05-21";
 
@@ -120,8 +117,8 @@ pub mod metadb {
 
 /// ``queries`` LMDB and its related data & functions
 pub mod queriesdb {
-    use byteorder::{ByteOrder, LittleEndian};
     use crate::QKey;
+    use byteorder::{ByteOrder, LittleEndian};
     use log::warn;
     use std::convert::TryFrom;
 
@@ -160,99 +157,21 @@ pub mod queriesdb {
 
 /// ``answers`` LMDB and its related data & functions
 pub mod answersdb {
-    use crate::{
-        database::QKey,
-        error::DbFormatError
-    };
+    use crate::{error::DbFormatError, DnsReply, ServerResponse, ServerResponseList};
     use byteorder::{ByteOrder, LittleEndian};
-    use domain::base::{iana::rtype::Rtype, octets::ParseError, Message};
-    use domain::rdata::Rrsig;
-    use std::collections::BTreeSet;
+    use domain::base::Message;
     use std::convert::TryFrom;
-    use std::fmt;
     use std::time::Duration;
 
     /// Answers LMDB database name
     pub const NAME: &str = "answers";
 
-    /// Response from a server.
-    #[derive(Debug, PartialEq, Eq, Clone)]
-    pub enum ServerReply {  // TODO refactor rename -> ServerResponse
-        /// No response was received from the server in time.
-        Timeout,
-        /// Response was received, but it isn't a DNS message.
-        Malformed,
-        /// Response was received and it seems to be a DNS message.
-        Data(DnsReply),
-    }
-
-    /// DNS message reply from a server.
-    #[derive(Clone)]
-    pub struct DnsReply {
-        /// The time it took for the reply to arrive after sending the query.
-        pub delay: Duration,
-        /// The DNS message received in the the reply.
-        ///
-        /// The content is only guaranteed to have a DNS header, but the message itself wasn't
-        /// parsed and isn't guaranteed to be a valid DNS message.
-        pub message: Message<Vec<u8>>,
-    }
-    impl DnsReply {
-        /// Return list of unique non-RRSIG record types present in answer.
-        pub fn answer_rtypes(&self) -> Result<BTreeSet<Rtype>, ParseError> {
-            let mut rtypes = BTreeSet::new();
-            for rr in self.message.answer()? {
-                let rtype = rr?.rtype();
-                if rtype != Rtype::Rrsig {
-                    rtypes.insert(rtype);
-                }
-            }
-            Ok(rtypes)
-        }
-        /// Return list of unique types that are covered by any RRSIG in answer.
-        pub fn answer_rrsig_covered(&self) -> Result<BTreeSet<Rtype>, ParseError> {
-            let mut covered = BTreeSet::new();
-            for rr in self.message.answer()? {
-                let rr = rr?;
-                if rr.rtype() == Rtype::Rrsig {
-                    if let Some(sig) = rr.into_record::<Rrsig<_, _>>()? {
-                        covered.insert(sig.data().type_covered());
-                    }
-                }
-            }
-            Ok(covered)
-        }
-    }
-    impl PartialEq for DnsReply {
-        fn eq(&self, other: &Self) -> bool {
-            self.delay == other.delay && self.message.as_octets() == other.message.as_octets()
-        }
-    }
-    impl Eq for DnsReply {}
-    impl fmt::Debug for DnsReply {
-        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-            f.debug_struct("DnsReply")
-                .field("delay", &self.delay)
-                .field("msgid", &self.message.header().id())
-                .finish_non_exhaustive()
-        }
-    }
-
-    /// A set of responses from all servers for a particular query.
-    #[derive(Debug, PartialEq, Eq)]
-    pub struct ServerReplyList {  // TODO ServerResponseList
-        /// Query identifier.
-        pub key: QKey,
-        /// List of responses in the exact order as read from LMDB.
-        pub replies: Vec<ServerReply>,
-    }
-
     /// Try to parse servers responses directly from LMDB binary data.
-    impl TryFrom<(&[u8], &[u8])> for ServerReplyList {
+    impl TryFrom<(&[u8], &[u8])> for ServerResponseList {
         type Error = DbFormatError;
 
         fn try_from(item: (&[u8], &[u8])) -> Result<Self, Self::Error> {
-            let mut replies: Vec<ServerReply> = vec![];
+            let mut replies: Vec<ServerResponse> = vec![];
             let (key, buf) = item;
             if key.len() != 4 {
                 return Err(DbFormatError::ReplyInvalidData);
@@ -269,7 +188,7 @@ pub mod answersdb {
                     if len != 0 {
                         return Err(DbFormatError::ReplyInvalidData);
                     } else {
-                        replies.push(ServerReply::Timeout);
+                        replies.push(ServerResponse::Timeout);
                         continue;
                     }
                 }
@@ -283,19 +202,19 @@ pub mod answersdb {
 
                 match Message::from_octets(wire) {
                     Ok(msg) => {
-                        replies.push(ServerReply::Data(DnsReply {
+                        replies.push(ServerResponse::Data(DnsReply {
                             delay: Duration::from_micros(delay as u64),
                             message: msg,
                         }));
                     }
                     Err(_) => {
-                        replies.push(ServerReply::Malformed);
+                        replies.push(ServerResponse::Malformed);
                     }
                 }
             }
 
             if i == buf.len() {
-                Ok(ServerReplyList {
+                Ok(ServerResponseList {
                     key: LittleEndian::read_u32(key),
                     replies,
                 })
@@ -352,15 +271,15 @@ mod tests {
 
     #[test]
     fn parse_serverreplylist() {
-        use answersdb::{DnsReply, ServerReply, ServerReplyList};
+        use crate::{DnsReply, ServerResponse, ServerResponseList};
         use domain::base::Message;
         use std::time::Duration;
 
         let key = vec![0x42, 0x00, 0x00, 0x00];
         let empty = vec![];
         assert_eq!(
-            ServerReplyList::try_from((key.as_slice(), empty.as_slice())),
-            Ok(ServerReplyList {
+            ServerResponseList::try_from((key.as_slice(), empty.as_slice())),
+            Ok(ServerResponseList {
                 key: 0x42,
                 replies: vec![]
             })
@@ -368,25 +287,25 @@ mod tests {
 
         let timeout = vec![0xff, 0xff, 0xff, 0xff, 0x00, 0x00];
         assert_eq!(
-            ServerReplyList::try_from((key.as_slice(), timeout.as_slice())),
-            Ok(ServerReplyList {
+            ServerResponseList::try_from((key.as_slice(), timeout.as_slice())),
+            Ok(ServerResponseList {
                 key: 0x42,
-                replies: vec![ServerReply::Timeout,],
+                replies: vec![ServerResponse::Timeout,],
             })
         );
 
         let missingdata = vec![0x00, 0x00, 0x00, 0x00, 0x01, 0x00];
         assert_eq!(
-            ServerReplyList::try_from((key.as_slice(), missingdata.as_slice())),
+            ServerResponseList::try_from((key.as_slice(), missingdata.as_slice())),
             Err(DbFormatError::ReplyMissingData.into())
         );
 
         let shortdata = vec![0x00, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00];
         assert_eq!(
-            ServerReplyList::try_from((key.as_slice(), shortdata.as_slice())),
-            Ok(ServerReplyList {
+            ServerResponseList::try_from((key.as_slice(), shortdata.as_slice())),
+            Ok(ServerResponseList {
                 key: 0x42,
-                replies: vec![ServerReply::Malformed],
+                replies: vec![ServerResponse::Malformed],
             })
         );
 
@@ -401,10 +320,10 @@ mod tests {
             message: Message::from_octets(wire.to_owned()).unwrap(),
         };
         assert_eq!(
-            ServerReplyList::try_from((key.as_slice(), data.as_slice())),
-            Ok(ServerReplyList {
+            ServerResponseList::try_from((key.as_slice(), data.as_slice())),
+            Ok(ServerResponseList {
                 key: 0x42,
-                replies: vec![ServerReply::Data(dnsreply.to_owned())],
+                replies: vec![ServerResponse::Data(dnsreply.to_owned())],
             })
         );
 
@@ -413,13 +332,13 @@ mod tests {
         data.append(&mut header3.to_owned());
         data.append(&mut wire.to_owned());
         assert_eq!(
-            ServerReplyList::try_from((key.as_slice(), data.as_slice())),
-            Ok(ServerReplyList {
+            ServerResponseList::try_from((key.as_slice(), data.as_slice())),
+            Ok(ServerResponseList {
                 key: 0x42,
                 replies: vec![
-                    ServerReply::Data(dnsreply.to_owned()),
-                    ServerReply::Timeout,
-                    ServerReply::Data(DnsReply {
+                    ServerResponse::Data(dnsreply.to_owned()),
+                    ServerResponse::Timeout,
+                    ServerResponse::Data(DnsReply {
                         delay: Duration::from_micros(1),
                         message: Message::from_octets(wire.to_owned()).unwrap(),
                     }),

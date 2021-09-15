@@ -49,7 +49,8 @@ fn parse_args() -> Result<Args, Error> {
     })
 }
 
-fn transceiver() -> Result<(), Box<dyn StdError>> {  // TODO can be replaced?
+fn transceiver() -> Result<(), Box<dyn StdError>> {
+    // TODO can be replaced?
     let args = parse_args()?;
 
     let env = match database::open_env(&args.envdir) {

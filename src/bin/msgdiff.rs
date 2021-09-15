@@ -5,16 +5,17 @@ use lmdb::{Cursor, Transaction};
 use log::error;
 use rayon::prelude::*;
 use respdiff::{
-    self,
     config::Config,
-    database::{self, answersdb::ServerReplyList, QKey},
+    database::{self, answersdb, metadb, queriesdb},
     dataformat::Report,
+    error::Error,
     matcher::{self, Field, FieldMismatches},
+    QKey, ServerResponseList,
 };
 
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::convert::TryFrom;
-use std::error::Error;
+use std::error::Error as StdError;
 use std::fs::File;
 use std::io::BufReader;
 use std::path::PathBuf;
@@ -75,7 +76,8 @@ fn parse_args() -> Result<Args, Error> {
     })
 }
 
-fn msgdiff() -> Result<(), Box<dyn StdError>> {  // TODO can we use respdiff error?
+fn msgdiff() -> Result<(), Box<dyn StdError>> {
+    // TODO can we use respdiff error?
     let args = parse_args()?;
     let mut report = Report::new();
 
@@ -95,7 +97,7 @@ fn msgdiff() -> Result<(), Box<dyn StdError>> {  // TODO can we use respdiff err
         let reply_lists: Vec<_> = cur
             .iter()
             .map(|res| match res {
-                Ok(item) => match ServerReplyList::try_from(item) {
+                Ok(item) => match ServerResponseList::try_from(item) {
                     Ok(reply_list) => reply_list,
                     Err(e) => {
                         error!("{}", e);
@@ -209,15 +211,15 @@ fn msgdiff() -> Result<(), Box<dyn StdError>> {  // TODO can we use respdiff err
     }
 
     {
-        let mdb = database::open_db(&env, database::metadb::NAME, false)?;
+        let mdb = database::open_db(&env, metadb::NAME, false)?;
         let txn = env.begin_ro_txn()?;
 
-        report.start_time = database::metadb::read_start_time(mdb, &txn)?;
-        report.end_time = database::metadb::read_end_time(mdb, &txn)?;
+        report.start_time = metadb::read_start_time(mdb, &txn)?;
+        report.end_time = metadb::read_end_time(mdb, &txn)?;
     }
     // TODO is there better way to commit txn besides using a command block?
     {
-        let qdb = database::open_db(&env, database::queriesdb::NAME, false)?;
+        let qdb = database::open_db(&env, queriesdb::NAME, false)?;
         let txn = env.begin_ro_txn()?;
         let mut cur = txn.open_ro_cursor(qdb)?;
         report.total_queries = cur.iter().count() as u64;

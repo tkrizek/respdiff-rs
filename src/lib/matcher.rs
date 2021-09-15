@@ -1,10 +1,4 @@
-use crate::{
-    DiffCriteria,
-    database::{
-        answersdb::{DnsReply, ServerReply}, // TODO weird location
-        QKey
-    }
-};
+use crate::{DiffCriteria, DnsReply, QKey, ServerResponse};
 use domain::base::{
     header::Flags,
     iana,
@@ -225,30 +219,30 @@ impl fmt::Display for Mismatch {
 ///
 /// This function finds all mismatches within the given criteria.
 pub fn compare(
-    expected: &ServerReply,
-    got: &ServerReply,
+    expected: &ServerResponse,
+    got: &ServerResponse,
     criteria: &[DiffCriteria],
 ) -> HashSet<Mismatch> {
     let mut mismatches = HashSet::new();
 
     match (expected, got) {
-        (&ServerReply::Timeout, &ServerReply::Timeout) => {}
-        (&ServerReply::Timeout, _) => {
+        (&ServerResponse::Timeout, &ServerResponse::Timeout) => {}
+        (&ServerResponse::Timeout, _) => {
             mismatches.insert(Mismatch::TimeoutExpected);
         }
-        (_, &ServerReply::Timeout) => {
+        (_, &ServerResponse::Timeout) => {
             mismatches.insert(Mismatch::TimeoutGot);
         }
-        (&ServerReply::Malformed, &ServerReply::Malformed) => {
+        (&ServerResponse::Malformed, &ServerResponse::Malformed) => {
             mismatches.insert(Mismatch::MalformedBoth);
         }
-        (&ServerReply::Malformed, _) => {
+        (&ServerResponse::Malformed, _) => {
             mismatches.insert(Mismatch::MalformedExpected);
         }
-        (_, &ServerReply::Malformed) => {
+        (_, &ServerResponse::Malformed) => {
             mismatches.insert(Mismatch::MalformedGot);
         }
-        (&ServerReply::Data(ref expected), &ServerReply::Data(ref got)) => {
+        (&ServerResponse::Data(ref expected), &ServerResponse::Data(ref got)) => {
             for crit in criteria {
                 if let Some(mismatch) = crit.mismatch(expected, got) {
                     mismatches.insert(mismatch);
@@ -270,12 +264,12 @@ mod tests {
     use std::str::FromStr;
     use std::time::Duration;
 
-    fn reply_noerror() -> ServerReply {
+    fn reply_noerror() -> ServerResponse {
         reply_from_msg(MessageBuilder::new_vec().into_message())
     }
 
-    fn reply_from_msg(message: Message<Vec<u8>>) -> ServerReply {
-        ServerReply::Data(DnsReply {
+    fn reply_from_msg(message: Message<Vec<u8>>) -> ServerResponse {
+        ServerResponse::Data(DnsReply {
             delay: Duration::from_micros(0),
             message: message,
         })
@@ -284,19 +278,19 @@ mod tests {
     #[test]
     fn compare_timeout() {
         let crit = vec![];
-        let res = compare(&ServerReply::Timeout, &ServerReply::Timeout, &crit);
+        let res = compare(&ServerResponse::Timeout, &ServerResponse::Timeout, &crit);
         assert_eq!(res.len(), 0);
 
-        let res = compare(&ServerReply::Malformed, &ServerReply::Timeout, &crit);
+        let res = compare(&ServerResponse::Malformed, &ServerResponse::Timeout, &crit);
         assert_eq!(res.len(), 1);
         assert!(res.contains(&Mismatch::TimeoutGot));
 
-        let res = compare(&ServerReply::Timeout, &ServerReply::Malformed, &crit);
+        let res = compare(&ServerResponse::Timeout, &ServerResponse::Malformed, &crit);
         assert_eq!(res.len(), 1);
         assert!(res.contains(&Mismatch::TimeoutExpected));
 
         let res = compare(
-            &ServerReply::Timeout,
+            &ServerResponse::Timeout,
             &reply_noerror(),
             &vec![DiffCriteria::Opcode],
         );
@@ -307,15 +301,19 @@ mod tests {
     #[test]
     fn compare_malformed() {
         let crit = vec![];
-        let res = compare(&ServerReply::Malformed, &ServerReply::Malformed, &crit);
+        let res = compare(
+            &ServerResponse::Malformed,
+            &ServerResponse::Malformed,
+            &crit,
+        );
         assert_eq!(res.len(), 1);
         assert!(res.contains(&Mismatch::MalformedBoth));
 
-        let res = compare(&reply_noerror(), &ServerReply::Malformed, &crit);
+        let res = compare(&reply_noerror(), &ServerResponse::Malformed, &crit);
         assert_eq!(res.len(), 1);
         assert!(res.contains(&Mismatch::MalformedGot));
 
-        let res = compare(&ServerReply::Malformed, &reply_noerror(), &crit);
+        let res = compare(&ServerResponse::Malformed, &reply_noerror(), &crit);
         assert_eq!(res.len(), 1);
         assert!(res.contains(&Mismatch::MalformedExpected));
     }
@@ -330,7 +328,7 @@ mod tests {
         assert_eq!(res.len(), 0);
 
         let r2 = &mut r1.to_owned();
-        if let ServerReply::Data(ref mut dns) = r2 {
+        if let ServerResponse::Data(ref mut dns) = r2 {
             dns.message.header_mut().set_opcode(Status);
         };
         let res = compare(r1, r2, &crit);
@@ -352,7 +350,7 @@ mod tests {
         assert_eq!(res.len(), 0);
 
         let r2 = &mut r1.to_owned();
-        if let ServerReply::Data(ref mut dns) = r2 {
+        if let ServerResponse::Data(ref mut dns) = r2 {
             dns.message.header_mut().set_rcode(ServFail);
         };
         let res = compare(r1, r2, &crit);
@@ -371,7 +369,7 @@ mod tests {
 
         let r1 = &reply_noerror();
         let r2 = &mut r1.to_owned();
-        if let ServerReply::Data(ref mut dns) = r2 {
+        if let ServerResponse::Data(ref mut dns) = r2 {
             dns.message.header_mut().set_rcode(ServFail);
             dns.message.header_mut().set_opcode(Status);
         };
@@ -392,7 +390,7 @@ mod tests {
         assert_eq!(res.len(), 0);
 
         let r2 = &mut r1.to_owned();
-        if let ServerReply::Data(ref mut dns) = r2 {
+        if let ServerResponse::Data(ref mut dns) = r2 {
             dns.message.header_mut().set_aa(true);
         };
         let res = compare(r1, r2, &crit);

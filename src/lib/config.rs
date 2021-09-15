@@ -1,4 +1,4 @@
-use crate::error::Error;
+use crate::{error::Error, DiffCriteria};
 use serde::{Deserialize, Deserializer};
 use std::collections::HashMap;
 use std::convert::{TryFrom, TryInto};
@@ -87,23 +87,6 @@ pub struct DiffConfig {
     pub target: String,
     #[serde(deserialize_with = "criteria_from_list")]
     pub criteria: Vec<DiffCriteria>,
-}
-
-/// Fields used to compare answers
-#[derive(Deserialize, PartialEq, Eq, Debug, Copy, Clone)]
-#[serde(try_from = "String")]
-pub enum DiffCriteria {
-    Opcode,
-    Rcode,
-    Flags,
-    Question,
-    AnswerTypes,
-    AnswerRrsigs,
-    // FIXME these have not been implemented, since we don't use them
-    // Authority,
-    // Additional,
-    // Edns,
-    // Nsid,
 }
 
 impl TryFrom<&str> for DiffCriteria {

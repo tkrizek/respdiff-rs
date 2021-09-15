@@ -1,6 +1,6 @@
 use crate::{
-    database::QKey,
-    matcher::{Field, FieldMismatches}
+    matcher::{Field, FieldMismatches},
+    QKey,
 };
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
