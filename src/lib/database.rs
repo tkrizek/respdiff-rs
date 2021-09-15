@@ -12,7 +12,7 @@ const BIN_FORMAT_VERSION: &str = "2018-05-21";
 /// Create an LMDB Environment.
 ///
 /// Only a single instance can exist in a process.
-pub fn open_env(dir: &Path) -> Result<Environment> {
+pub fn open_env(dir: &Path) -> Result<Environment, Error> {
     Ok(Environment::new()
         .set_max_dbs(5)
         .set_map_size(10 * 1024_usize.pow(3)) // 10 G
@@ -21,7 +21,7 @@ pub fn open_env(dir: &Path) -> Result<Environment> {
 }
 
 /// Create or open an LMDB database.
-pub fn open_db(env: &Environment, name: &str, create: bool) -> Result<Database> {
+pub fn open_db(env: &Environment, name: &str, create: bool) -> Result<Database, Error> {
     if create {
         Ok(env.create_db(Some(name), DatabaseFlags::empty())?)
     } else {
@@ -30,7 +30,7 @@ pub fn open_db(env: &Environment, name: &str, create: bool) -> Result<Database> 
 }
 
 /// Check if database exists already.
-pub fn exists_db(env: &Environment, name: &str) -> Result<bool> {
+pub fn exists_db(env: &Environment, name: &str) -> Result<bool, Error> {
     match env.open_db(Some(name)) {
         Ok(_) => Ok(true),
         Err(LmdbError::NotFound) => Ok(false),
@@ -40,7 +40,7 @@ pub fn exists_db(env: &Environment, name: &str) -> Result<bool> {
 
 /// ``meta`` LMDB and its related data & functions
 pub mod metadb {
-    use crate::{error::DbFormatError, Error, Result};
+    use crate::error::{DbFormatError, Error};
     use byteorder::{ByteOrder, LittleEndian};
     use lmdb::{Database, RoTransaction, RwTransaction, Transaction, WriteFlags};
     use std::convert::TryInto;
@@ -50,7 +50,7 @@ pub mod metadb {
     pub const NAME: &str = "meta";
 
     /// Write binary format version to LMDB.
-    pub fn write_version(db: Database, txn: &mut RwTransaction) -> Result<()> {
+    pub fn write_version(db: Database, txn: &mut RwTransaction) -> Result<(), Error> {
         Ok(txn.put(
             db,
             b"version",
@@ -60,7 +60,7 @@ pub mod metadb {
     }
 
     /// Write start time when transciever started sending queries to LMDB.
-    pub fn write_start_time(db: Database, txn: &mut RwTransaction) -> Result<()> {
+    pub fn write_start_time(db: Database, txn: &mut RwTransaction) -> Result<(), Error> {
         let duration = match SystemTime::now().duration_since(SystemTime::UNIX_EPOCH) {
             Ok(val) => val,
             Err(_) => return Err(Error::Time),
@@ -75,13 +75,13 @@ pub mod metadb {
     }
 
     /// Read the transciever's start time.
-    pub fn read_start_time(db: Database, txn: &RoTransaction) -> Result<u32> {
+    pub fn read_start_time(db: Database, txn: &RoTransaction) -> Result<u32, Error> {
         let time = txn.get(db, b"start_time")?;
         Ok(LittleEndian::read_u32(time))
     }
 
     /// Read the transceiver's end time.
-    pub fn read_end_time(db: Database, txn: &RoTransaction) -> Result<u32> {
+    pub fn read_end_time(db: Database, txn: &RoTransaction) -> Result<u32, Error> {
         let time = txn.get(db, b"end_time")?;
         Ok(LittleEndian::read_u32(time))
     }
@@ -90,7 +90,7 @@ pub mod metadb {
     ///
     /// Perform a check that the binary version of particular LMDB is compatible
     /// with the expected version.
-    pub fn check_version(db: Database, txn: &RoTransaction) -> Result<String> {
+    pub fn check_version(db: Database, txn: &RoTransaction) -> Result<String, Error> {
         let version = txn.get(db, b"version")?;
         let version = String::from_utf8(version.to_vec())?;
 
@@ -106,7 +106,7 @@ pub mod metadb {
         db: Database,
         txn: &mut RwTransaction,
         servers: Vec<String>,
-    ) -> Result<()> {
+    ) -> Result<(), Error> {
         let mut bytes = [0; 4];
         LittleEndian::write_u32(&mut bytes, servers.len() as u32);
         txn.put(db, b"servers", &bytes, WriteFlags::empty())?;
