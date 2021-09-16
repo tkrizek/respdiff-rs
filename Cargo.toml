@@ -26,6 +26,7 @@ clap = "2"
 domain = { git = "https://github.com/NLnetLabs/domain.git", rev = "8d31cac" }
 thiserror = "1.0"
 rayon = "1.5"
+anyhow = { version = "1.0", features = ["backtrace"] }
 
 [dev-dependencies]
 tempdir = "0.3"

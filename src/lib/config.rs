@@ -1,9 +1,10 @@
-use crate::Error;
+use crate::{error::Error, DiffCriteria};
 use serde::{Deserialize, Deserializer};
 use std::collections::HashMap;
 use std::convert::{TryFrom, TryInto};
 use std::net::IpAddr;
 
+/// Configuration file representation
 #[derive(Deserialize, PartialEq, Debug, Clone)]
 pub struct Config {
     pub sendrecv: SendRecvConfig,
@@ -31,6 +32,7 @@ where
     }
 }
 
+/// Sendrecv (transceiver) component configuration
 #[derive(Deserialize, PartialEq, Debug, Copy, Clone)]
 pub struct SendRecvConfig {
     pub timeout: f64,
@@ -40,6 +42,7 @@ pub struct SendRecvConfig {
     pub max_timeouts: Option<u64>,
 }
 
+/// Single server configuration
 #[derive(Deserialize, PartialEq, Debug, Copy, Clone)]
 pub struct ServerConfig {
     pub ip: IpAddr,
@@ -56,6 +59,7 @@ where
     s.parse().map_err(serde::de::Error::custom)
 }
 
+/// Transport protocol used to send/receive queries
 #[derive(Deserialize, PartialEq, Debug, Copy, Clone)]
 #[serde(try_from = "String")]
 pub enum TransportProtocol {
@@ -77,27 +81,12 @@ impl TryFrom<String> for TransportProtocol {
     }
 }
 
+/// Msgdiff configuration
 #[derive(Deserialize, PartialEq, Eq, Debug, Clone)]
 pub struct DiffConfig {
     pub target: String,
     #[serde(deserialize_with = "criteria_from_list")]
     pub criteria: Vec<DiffCriteria>,
-}
-
-#[derive(Deserialize, PartialEq, Eq, Debug, Copy, Clone)]
-#[serde(try_from = "String")]
-pub enum DiffCriteria {
-    Opcode,
-    Rcode,
-    Flags,
-    Question,
-    AnswerTypes,
-    AnswerRrsigs,
-    // FIXME these have not been implemented, since we don't use them
-    // Authority,
-    // Additional,
-    // Edns,
-    // Nsid,
 }
 
 impl TryFrom<&str> for DiffCriteria {
@@ -140,12 +129,14 @@ where
     criteria.map_err(serde::de::Error::custom)
 }
 
+/// DiffReport configuration
 #[derive(Deserialize, PartialEq, Eq, Debug, Clone)]
 pub struct ReportConfig {
     #[serde(deserialize_with = "field_weights_from_list")]
     pub field_weights: Vec<FieldWeight>,
 }
 
+/// Field weights used to produce DiffReport
 #[derive(Deserialize, PartialEq, Eq, Debug, Copy, Clone)]
 #[serde(try_from = "String")]
 pub enum FieldWeight {
@@ -206,6 +197,7 @@ where
         .collect();
     field_weights.map_err(serde::de::Error::custom)
 }
+
 #[cfg(test)]
 mod tests {
     use super::*;

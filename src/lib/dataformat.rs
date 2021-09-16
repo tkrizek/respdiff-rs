@@ -1,7 +1,11 @@
-use crate::matcher::{Field, FieldMismatches};
+use crate::{
+    matcher::{Field, FieldMismatches},
+    QKey,
+};
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
 
+/// JSON datafile report
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Default)]
 pub struct Report {
     pub start_time: u32,
@@ -15,20 +19,25 @@ pub struct Report {
 }
 
 impl Report {
+    /// Create new Report
     pub fn new() -> Self {
         Default::default()
     }
 
-    // TODO refactor: use type alias for QKey
-    pub fn others_disagree(&self) -> BTreeSet<u32> {
+    /// Return a set of queries on which other servers (besides target) disagree
+    /// (upstream_unstable)
+    pub fn others_disagree(&self) -> BTreeSet<QKey> {
         self.other_disagreements.queries.clone()
     }
 
-    pub fn set_others_disagree(&mut self, queries: &BTreeSet<u32>) {
+    /// Set a set of queries that others disagree on
+    pub fn set_others_disagree(&mut self, queries: &BTreeSet<QKey>) {
         self.other_disagreements.queries = queries.clone();
     }
 
     // FIXME: no way to retrieve target_disagrees - not needed right now
+
+    /// Return a collection of target mismatches for each field.
     pub fn set_target_disagrees(&mut self, dis: BTreeMap<Field, FieldMismatches>) {
         self.target_disagreements.fields = BTreeMap::new();
         for (field, fmismatches) in dis {
@@ -50,7 +59,7 @@ impl Report {
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Default)]
 struct OtherDisagreements {
-    queries: BTreeSet<u32>,
+    queries: BTreeSet<QKey>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Default)]
@@ -63,11 +72,12 @@ struct FieldDisagreements {
     mismatches: Vec<MismatchQueries>,
 }
 
+/// Collection of queries that share the same mismatch.
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Default)]
 pub struct MismatchQueries {
     pub exp_val: String,
     pub got_val: String,
-    pub queries: Vec<u32>,
+    pub queries: Vec<QKey>,
 }
 
 #[cfg(test)]
@@ -122,7 +132,7 @@ mod tests {
             total_queries: 100,
             total_answers: 99,
             other_disagreements: OtherDisagreements {
-                queries: [22, 64, 93].iter().cloned().collect::<BTreeSet<u32>>(),
+                queries: [22, 64, 93].iter().cloned().collect::<BTreeSet<QKey>>(),
             },
             target_disagreements: TargetDisagreements {
                 fields: [

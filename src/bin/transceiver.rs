@@ -4,13 +4,12 @@ use clap::{App, Arg};
 use lmdb::{Cursor, Transaction};
 use log::error;
 use respdiff::{
-    self,
     config::Config,
     database::{self, queriesdb::Query},
+    error::Error,
 };
 
 use std::convert::TryFrom;
-use std::error::Error;
 use std::fs::File;
 use std::io::BufReader;
 use std::path::PathBuf;
@@ -20,7 +19,7 @@ struct Args {
     envdir: PathBuf,
 }
 
-fn parse_args() -> Result<Args, respdiff::Error> {
+fn parse_args() -> Result<Args, Error> {
     let matches = App::new("Respdiff: Transceiver")
         .about("send queries to servers and record answers (replaces orchestrator.py)")
         .arg(
@@ -41,15 +40,15 @@ fn parse_args() -> Result<Args, respdiff::Error> {
     Ok(Args {
         config: {
             let path = matches.value_of("config").unwrap_or("respdiff.cfg");
-            let file = File::open(path).map_err(respdiff::Error::ConfigFile)?;
+            let file = File::open(path).map_err(Error::ConfigFile)?;
             let buf = BufReader::new(file);
-            serde_ini::from_bufread::<_, Config>(buf).map_err(respdiff::Error::ConfigRead)?
+            serde_ini::from_bufread::<_, Config>(buf).map_err(Error::ConfigRead)?
         },
         envdir: { matches.value_of("ENVDIR").unwrap().into() },
     })
 }
 
-fn transceiver() -> Result<(), Box<dyn Error>> {
+fn transceiver() -> Result<(), Error> {
     let args = parse_args()?;
 
     let env = match database::open_env(&args.envdir) {
@@ -106,7 +105,7 @@ fn transceiver() -> Result<(), Box<dyn Error>> {
         });
     }
 
-    Err(Box::new(respdiff::Error::NotImplemented))
+    Err(Error::NotImplemented)
 }
 
 fn main() {
