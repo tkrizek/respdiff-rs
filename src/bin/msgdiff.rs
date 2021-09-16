@@ -74,6 +74,8 @@ fn parse_args() -> Result<Args, Error> {
     })
 }
 
+type IndexPair = (usize, usize);
+
 /// Returns indices which are used to compare responses in list.
 ///
 /// Two values are returned.
@@ -81,14 +83,11 @@ fn parse_args() -> Result<Args, Error> {
 /// compare the answer to.
 /// The second returned value is a vector of tuples each with two indicies -- two servers to be
 /// compared for equality between each other.
-fn indices_to_cmp(
-    target: &str,
-    servers: &Vec<String>,
-) -> Result<((usize, usize), Vec<(usize, usize)>), Error> {
+fn indices_to_cmp(target: &str, servers: &[String]) -> Result<(IndexPair, Vec<IndexPair>), Error> {
     let i_target = servers
         .iter()
         .position(|x| x == target)
-        .ok_or(anyhow!("invalid server name"))?;
+        .ok_or_else(|| anyhow!("invalid server name"))?;
 
     let i_others = servers
         .iter()
