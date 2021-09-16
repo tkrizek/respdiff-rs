@@ -9,11 +9,11 @@ use respdiff::{
     database::{self, answersdb, metadb, queriesdb},
     dataformat::Report,
     error::Error,
-    matcher::{self, Field, FieldMismatches},
+    matcher::{self, Field, FieldMismatches, Mismatch},
     QKey,
 };
 
-use std::collections::{BTreeMap, BTreeSet, HashMap};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::fs::File;
 use std::io::BufReader;
 use std::path::PathBuf;
@@ -111,63 +111,10 @@ fn indices_to_cmp(
     Ok((i_cmp_target, i_cmps_others))
 }
 
-fn msgdiff() -> Result<(), Error> {
-    let args = parse_args()?;
-    let mut report = Report::new();
-
-    if args.config.servers.len() < 2 {
-        error!("Not enough servers to compare");
-        std::process::exit(1);
-    }
-
-    let env = match database::open_env(&args.envdir) {
-        Ok(env) => env,
-        Err(e) => {
-            error!("failed to open LMDB environment: {:?}", e);
-            std::process::exit(1);
-        }
-    };
-    let txn = env.begin_ro_txn()?;
-    let adb = database::open_db(&env, answersdb::NAME, false)?;
-
-    let response_lists = answersdb::get_response_lists(adb, &txn)?;
-
-    let (i_cmp_target, i_cmps_others) =
-        indices_to_cmp(&args.config.diff.target, &args.config.servers)?;
-
-    let others_disagreements = response_lists
-        .par_iter()
-        .filter_map(|response_list| {
-            assert_eq!(response_list.replies.len(), args.config.servers.len());
-            for (j, k) in &i_cmps_others {
-                let diff = matcher::compare(
-                    &response_list.replies[*j],
-                    &response_list.replies[*k],
-                    &args.config.diff.criteria,
-                );
-                if !diff.is_empty() {
-                    return Some(response_list.key);
-                }
-            }
-            None
-        })
-        .collect::<BTreeSet<QKey>>();
-
-    let diffs: BTreeMap<_, _> = response_lists
-        .par_iter()
-        .filter_map(|response_list| {
-            let diff = matcher::compare(
-                &response_list.replies[i_cmp_target.0],
-                &response_list.replies[i_cmp_target.1],
-                &args.config.diff.criteria,
-            );
-            if !diff.is_empty() {
-                return Some((response_list.key, diff));
-            }
-            None
-        })
-        .collect();
-
+fn target_disagreements_from_diffs(
+    diffs: BTreeMap<QKey, HashSet<Mismatch>>,
+    others_disagreements: &BTreeSet<QKey>,
+) -> BTreeMap<Field, FieldMismatches> {
     let mut target_disagreements: BTreeMap<Field, FieldMismatches> = BTreeMap::new();
     for (key, qmismatches) in diffs {
         if others_disagreements.contains(&key) {
@@ -192,6 +139,67 @@ fn msgdiff() -> Result<(), Error> {
             queries.insert(key);
         }
     }
+    target_disagreements
+}
+
+fn msgdiff() -> Result<(), Error> {
+    let args = parse_args()?;
+    let mut report = Report::new();
+
+    if args.config.servers.len() < 2 {
+        error!("Not enough servers to compare");
+        std::process::exit(1);
+    }
+
+    let env = match database::open_env(&args.envdir) {
+        Ok(env) => env,
+        Err(e) => {
+            error!("failed to open LMDB environment: {:?}", e);
+            std::process::exit(1);
+        }
+    };
+    let txn = env.begin_ro_txn()?;
+    let adb = database::open_db(&env, answersdb::NAME, false)?;
+    let response_lists = answersdb::get_response_lists(adb, &txn)?;
+    let (i_cmp_target, i_cmps_others) =
+        indices_to_cmp(&args.config.diff.target, &args.config.servers)?;
+
+    // compare other servers to each other and find their differences
+    let others_disagreements = response_lists
+        .par_iter()
+        .filter_map(|response_list| {
+            assert_eq!(response_list.replies.len(), args.config.servers.len());
+            for (j, k) in &i_cmps_others {
+                let diff = matcher::compare(
+                    &response_list.replies[*j],
+                    &response_list.replies[*k],
+                    &args.config.diff.criteria,
+                );
+                if !diff.is_empty() {
+                    return Some(response_list.key);
+                }
+            }
+            None
+        })
+        .collect::<BTreeSet<QKey>>();
+
+    // find differences between the target and one of the other servers
+    let diffs: BTreeMap<_, _> = response_lists
+        .par_iter()
+        .filter_map(|response_list| {
+            let diff = matcher::compare(
+                &response_list.replies[i_cmp_target.0],
+                &response_list.replies[i_cmp_target.1],
+                &args.config.diff.criteria,
+            );
+            if !diff.is_empty() {
+                return Some((response_list.key, diff));
+            }
+            None
+        })
+        .collect();
+
+    let target_disagreements = target_disagreements_from_diffs(diffs, &others_disagreements);
 
     report.set_others_disagree(&others_disagreements);
     report.set_target_disagrees(target_disagreements);
