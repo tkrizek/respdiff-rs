@@ -28,6 +28,10 @@ pub enum Error {
     InvalidServerName,
     #[error("functionality not yet implemented")]
     NotImplemented,
+    #[error("failed to write datafile: {0}")]
+    DatafileWrite(io::Error),
+    #[error("failed to serialize datafile into JSON: {0}")]
+    DatafileSerialize(#[from]serde_json::Error),
 }
 
 impl PartialEq for Error {
@@ -44,6 +48,8 @@ impl PartialEq for Error {
             (ConfigFile(_), ConfigFile(_)) => true,
             (ConfigRead(_), ConfigRead(_)) => true,
             (NotImplemented, NotImplemented) => true,
+            (DatafileWrite(_), DatafileWrite(_)) => true,
+            (DatafileSerialize(_), DatafileSerialize(_)) => true,
             _ => false,
         }
     }

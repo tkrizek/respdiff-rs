@@ -15,7 +15,6 @@ use respdiff::{
 
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::convert::TryFrom;
-use std::error::Error as StdError;
 use std::fs::File;
 use std::io::BufReader;
 use std::path::PathBuf;
@@ -76,8 +75,7 @@ fn parse_args() -> Result<Args, Error> {
     })
 }
 
-fn msgdiff() -> Result<(), Box<dyn StdError>> {
-    // TODO can we use respdiff error?
+fn msgdiff() -> Result<(), Error> {
     let args = parse_args()?;
     let mut report = Report::new();
 
@@ -230,7 +228,7 @@ fn msgdiff() -> Result<(), Box<dyn StdError>> {
         report.total_answers = cur.iter().count() as u64;
     }
 
-    let out = File::create(args.datafile)?; // TODO maybe check if exists
+    let out = File::create(args.datafile).map_err(Error::DatafileWrite)?; // TODO maybe check if exists
     serde_json::to_writer(&out, &report)?;
 
     Ok(())

@@ -10,7 +10,6 @@ use respdiff::{
 };
 
 use std::convert::TryFrom;
-use std::error::Error as StdError;
 use std::fs::File;
 use std::io::BufReader;
 use std::path::PathBuf;
@@ -49,8 +48,7 @@ fn parse_args() -> Result<Args, Error> {
     })
 }
 
-fn transceiver() -> Result<(), Box<dyn StdError>> {
-    // TODO can be replaced?
+fn transceiver() -> Result<(), Error> {
     let args = parse_args()?;
 
     let env = match database::open_env(&args.envdir) {
@@ -107,7 +105,7 @@ fn transceiver() -> Result<(), Box<dyn StdError>> {
         });
     }
 
-    Err(Box::new(Error::NotImplemented))
+    Err(Error::NotImplemented)
 }
 
 fn main() {
