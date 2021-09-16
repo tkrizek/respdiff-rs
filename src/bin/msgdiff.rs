@@ -10,11 +10,10 @@ use respdiff::{
     dataformat::Report,
     error::Error,
     matcher::{self, Field, FieldMismatches},
-    QKey, ServerResponseList,
+    QKey,
 };
 
 use std::collections::{BTreeMap, BTreeSet, HashMap};
-use std::convert::TryFrom;
 use std::fs::File;
 use std::io::BufReader;
 use std::path::PathBuf;
@@ -86,29 +85,11 @@ fn msgdiff() -> Result<(), Error> {
             std::process::exit(1);
         }
     };
+    let txn = env.begin_ro_txn()?;
 
     let adb = database::open_db(&env, answersdb::NAME, false)?;
     {
-        let txn = env.begin_ro_txn()?;
-        let mut cur = txn.open_ro_cursor(adb)?;
-
-        let reply_lists: Vec<_> = cur
-            .iter()
-            .map(|res| match res {
-                Ok(item) => match ServerResponseList::try_from(item) {
-                    Ok(reply_list) => reply_list,
-                    Err(e) => {
-                        error!("{}", e);
-                        std::process::exit(1);
-                    }
-                },
-                Err(e) => {
-                    error!("{}", Error::Database(e));
-                    std::process::exit(1);
-                }
-            })
-            .collect();
-
+        let response_lists = answersdb::get_response_lists(adb, &txn)?;
         // TODO readability: refactor into func
         if args.config.servers.len() < 2 {
             error!("Not enough servers to compare");
@@ -134,7 +115,7 @@ fn msgdiff() -> Result<(), Error> {
             })
             .collect::<Vec<_>>();
         let i_cmp_target = (i_others[0], i_target);
-        let i_cmps_others: Vec<(usize, usize)> =   // TODO formatting
+        let i_cmps_others: Vec<(usize, usize)> =
             i_others
                 .iter()
                 .copied()
@@ -146,34 +127,34 @@ fn msgdiff() -> Result<(), Error> {
                 )
                 .collect();
 
-        let others_disagreements = reply_lists
+        let others_disagreements = response_lists
             .par_iter()
-            .filter_map(|reply_list| {
-                assert_eq!(reply_list.replies.len(), args.config.servers.len());
+            .filter_map(|response_list| {
+                assert_eq!(response_list.replies.len(), args.config.servers.len());
                 for (j, k) in &i_cmps_others {
                     let diff = matcher::compare(
-                        &reply_list.replies[*j],
-                        &reply_list.replies[*k],
+                        &response_list.replies[*j],
+                        &response_list.replies[*k],
                         &args.config.diff.criteria,
                     );
                     if !diff.is_empty() {
-                        return Some(reply_list.key);
+                        return Some(response_list.key);
                     }
                 }
                 None
             })
             .collect::<BTreeSet<QKey>>();
 
-        let diffs: BTreeMap<_, _> = reply_lists
+        let diffs: BTreeMap<_, _> = response_lists
             .par_iter()
-            .filter_map(|reply_list| {
+            .filter_map(|response_list| {
                 let diff = matcher::compare(
-                    &reply_list.replies[i_cmp_target.0],
-                    &reply_list.replies[i_cmp_target.1],
+                    &response_list.replies[i_cmp_target.0],
+                    &response_list.replies[i_cmp_target.1],
                     &args.config.diff.criteria,
                 );
                 if !diff.is_empty() {
-                    return Some((reply_list.key, diff));
+                    return Some((response_list.key, diff));
                 }
                 None
             })
@@ -210,25 +191,21 @@ fn msgdiff() -> Result<(), Error> {
 
     {
         let mdb = database::open_db(&env, metadb::NAME, false)?;
-        let txn = env.begin_ro_txn()?;
 
         report.start_time = metadb::read_start_time(mdb, &txn)?;
         report.end_time = metadb::read_end_time(mdb, &txn)?;
     }
-    // TODO is there better way to commit txn besides using a command block?
     {
         let qdb = database::open_db(&env, queriesdb::NAME, false)?;
-        let txn = env.begin_ro_txn()?;
         let mut cur = txn.open_ro_cursor(qdb)?;
         report.total_queries = cur.iter().count() as u64;
     }
     {
-        let txn = env.begin_ro_txn()?;
         let mut cur = txn.open_ro_cursor(adb)?;
         report.total_answers = cur.iter().count() as u64;
     }
 
-    let out = File::create(args.datafile).map_err(Error::DatafileWrite)?; // TODO maybe check if exists
+    let out = File::create(args.datafile).map_err(Error::DatafileWrite)?;
     serde_json::to_writer(&out, &report)?;
 
     Ok(())

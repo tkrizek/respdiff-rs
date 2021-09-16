@@ -13,7 +13,7 @@ pub fn open_env(dir: &Path) -> Result<Environment, Error> {
     Ok(Environment::new()
         .set_max_dbs(5)
         .set_map_size(10 * 1024_usize.pow(3)) // 10 G
-        .set_max_readers(384) // TODO: may need increasing?
+        .set_max_readers(384)
         .open(dir)?)
 }
 
@@ -157,9 +157,15 @@ pub mod queriesdb {
 
 /// ``answers`` LMDB and its related data & functions
 pub mod answersdb {
-    use crate::{error::DbFormatError, DnsReply, ServerResponse, ServerResponseList};
+    use crate::{
+        error::{DbFormatError, Error},
+        DnsReply,
+        ServerResponse,
+        ServerResponseList
+    };
     use byteorder::{ByteOrder, LittleEndian};
     use domain::base::Message;
+    use lmdb::{Cursor, Database, Transaction, RoTransaction};
     use std::convert::TryFrom;
     use std::time::Duration;
 
@@ -222,6 +228,17 @@ pub mod answersdb {
                 Err(DbFormatError::ReplyMissingData)
             }
         }
+    }
+
+    /// Retrieve server responses for all queries.
+    pub fn get_response_lists(db: Database, txn: &RoTransaction) -> Result<Vec<ServerResponseList>, Error> {
+        let mut cur = txn.open_ro_cursor(db)?;
+        let mut lists: Vec<_> = Vec::new();
+
+        for res in cur.iter() {
+            lists.push(ServerResponseList::try_from(res?)?);
+        }
+        Ok(lists)
     }
 }
 
