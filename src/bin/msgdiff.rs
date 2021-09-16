@@ -1,5 +1,6 @@
 extern crate lmdb;
 
+use anyhow::{anyhow, Error};
 use clap::{App, Arg};
 use lmdb::{Cursor, Transaction};
 use log::error;
@@ -8,7 +9,6 @@ use respdiff::{
     config::Config,
     database::{self, answersdb, metadb, queriesdb},
     dataformat::Report,
-    error::Error,
     matcher::{self, Field, FieldMismatches, Mismatch},
     QKey,
 };
@@ -56,9 +56,9 @@ fn parse_args() -> Result<Args, Error> {
     Ok(Args {
         config: {
             let path = matches.value_of("config").unwrap_or("respdiff.cfg");
-            let file = File::open(path).map_err(Error::ConfigFile)?;
+            let file = File::open(path)?;
             let buf = BufReader::new(file);
-            serde_ini::from_bufread::<_, Config>(buf).map_err(Error::ConfigRead)?
+            serde_ini::from_bufread::<_, Config>(buf)?
         },
         datafile: {
             match matches.value_of("datafile") {
@@ -88,7 +88,7 @@ fn indices_to_cmp(
     let i_target = servers
         .iter()
         .position(|x| x == target)
-        .ok_or(Error::InvalidServerName)?;
+        .ok_or(anyhow!("invalid server name"))?;
 
     let i_others = servers
         .iter()
@@ -215,20 +215,14 @@ fn msgdiff() -> Result<(), Error> {
     let mut cur = txn.open_ro_cursor(adb)?;
     report.total_answers = cur.iter().count() as u64;
 
-    let out = File::create(args.datafile).map_err(Error::DatafileWrite)?;
+    let out = File::create(args.datafile)?;
     serde_json::to_writer(&out, &report)?;
 
     Ok(())
 }
 
-fn main() {
+fn main() -> Result<(), Error> {
     env_logger::init();
 
-    match msgdiff() {
-        Ok(_) => {}
-        Err(e) => {
-            error!("{}", e);
-            std::process::exit(1);
-        }
-    };
+    msgdiff()
 }
