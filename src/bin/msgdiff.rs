@@ -158,8 +158,12 @@ fn msgdiff() -> Result<(), Error> {
             std::process::exit(1);
         }
     };
-    let txn = env.begin_ro_txn()?;
+
+    let qdb = database::open_db(&env, queriesdb::NAME, false)?;
     let adb = database::open_db(&env, answersdb::NAME, false)?;
+    let mdb = database::open_db(&env, metadb::NAME, false)?;
+    let txn = env.begin_ro_txn()?;
+
     let response_lists = answersdb::get_response_lists(adb, &txn)?;
     let (i_cmp_target, i_cmps_others) =
         indices_to_cmp(&args.config.diff.target, &args.config.servers)?;
@@ -203,12 +207,9 @@ fn msgdiff() -> Result<(), Error> {
 
     report.set_others_disagree(&others_disagreements);
     report.set_target_disagrees(target_disagreements);
-
-    let mdb = database::open_db(&env, metadb::NAME, false)?;
     report.start_time = metadb::read_start_time(mdb, &txn)?;
     report.end_time = metadb::read_end_time(mdb, &txn)?;
 
-    let qdb = database::open_db(&env, queriesdb::NAME, false)?;
     let mut cur = txn.open_ro_cursor(qdb)?;
     report.total_queries = cur.iter().count() as u64;
 
