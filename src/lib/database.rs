@@ -159,13 +159,11 @@ pub mod queriesdb {
 pub mod answersdb {
     use crate::{
         error::{DbFormatError, Error},
-        DnsReply,
-        ServerResponse,
-        ServerResponseList
+        DnsReply, ServerResponse, ServerResponseList,
     };
     use byteorder::{ByteOrder, LittleEndian};
     use domain::base::Message;
-    use lmdb::{Cursor, Database, Transaction, RoTransaction};
+    use lmdb::{Cursor, Database, RoTransaction, Transaction};
     use std::convert::TryFrom;
     use std::time::Duration;
 
@@ -231,7 +229,10 @@ pub mod answersdb {
     }
 
     /// Retrieve server responses for all queries.
-    pub fn get_response_lists(db: Database, txn: &RoTransaction) -> Result<Vec<ServerResponseList>, Error> {
+    pub fn get_response_lists(
+        db: Database,
+        txn: &RoTransaction,
+    ) -> Result<Vec<ServerResponseList>, Error> {
         let mut cur = txn.open_ro_cursor(db)?;
         let mut lists: Vec<_> = Vec::new();
 

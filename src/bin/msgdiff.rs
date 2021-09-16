@@ -74,9 +74,51 @@ fn parse_args() -> Result<Args, Error> {
     })
 }
 
+/// Returns indices which are used to compare responses in list.
+///
+/// Two values are returned.
+/// First is a tuple of target index and one of the other servers to
+/// compare the answer to.
+/// The second returned value is a vector of tuples each with two indicies -- two servers to be
+/// compared for equality between each other.
+fn indices_to_cmp(
+    target: &str,
+    servers: &Vec<String>,
+) -> Result<((usize, usize), Vec<(usize, usize)>), Error> {
+    let i_target = servers
+        .iter()
+        .position(|x| x == target)
+        .ok_or(Error::InvalidServerName)?;
+
+    let i_others = servers
+        .iter()
+        .enumerate()
+        .filter_map(|(i, s)| {
+            if s != target {
+                return Some(i);
+            }
+            None
+        })
+        .collect::<Vec<_>>();
+
+    let i_cmp_target = (i_others[0], i_target);
+    let i_cmps_others: Vec<(usize, usize)> = i_others
+        .iter()
+        .copied()
+        .zip(i_others.iter().copied().skip(1))
+        .collect();
+
+    Ok((i_cmp_target, i_cmps_others))
+}
+
 fn msgdiff() -> Result<(), Error> {
     let args = parse_args()?;
     let mut report = Report::new();
+
+    if args.config.servers.len() < 2 {
+        error!("Not enough servers to compare");
+        std::process::exit(1);
+    }
 
     let env = match database::open_env(&args.envdir) {
         Ok(env) => env,
@@ -86,124 +128,84 @@ fn msgdiff() -> Result<(), Error> {
         }
     };
     let txn = env.begin_ro_txn()?;
-
     let adb = database::open_db(&env, answersdb::NAME, false)?;
-    {
-        let response_lists = answersdb::get_response_lists(adb, &txn)?;
-        // TODO readability: refactor into func
-        if args.config.servers.len() < 2 {
-            error!("Not enough servers to compare");
-            std::process::exit(1);
-        }
-        let target = &args.config.diff.target;
-        let i_target = args
-            .config
-            .servers
-            .iter()
-            .position(|x| x == target)
-            .ok_or(Error::InvalidServerName)?;
-        let i_others = args
-            .config
-            .servers
-            .iter()
-            .enumerate()
-            .filter_map(|(i, s)| {
-                if s != target {
-                    return Some(i);
-                }
-                None
-            })
-            .collect::<Vec<_>>();
-        let i_cmp_target = (i_others[0], i_target);
-        let i_cmps_others: Vec<(usize, usize)> =
-            i_others
-                .iter()
-                .copied()
-                .zip(
-                    i_others
-                    .iter()
-                    .copied()
-                    .skip(1)
-                )
-                .collect();
 
-        let others_disagreements = response_lists
-            .par_iter()
-            .filter_map(|response_list| {
-                assert_eq!(response_list.replies.len(), args.config.servers.len());
-                for (j, k) in &i_cmps_others {
-                    let diff = matcher::compare(
-                        &response_list.replies[*j],
-                        &response_list.replies[*k],
-                        &args.config.diff.criteria,
-                    );
-                    if !diff.is_empty() {
-                        return Some(response_list.key);
-                    }
-                }
-                None
-            })
-            .collect::<BTreeSet<QKey>>();
+    let response_lists = answersdb::get_response_lists(adb, &txn)?;
 
-        let diffs: BTreeMap<_, _> = response_lists
-            .par_iter()
-            .filter_map(|response_list| {
+    let (i_cmp_target, i_cmps_others) =
+        indices_to_cmp(&args.config.diff.target, &args.config.servers)?;
+
+    let others_disagreements = response_lists
+        .par_iter()
+        .filter_map(|response_list| {
+            assert_eq!(response_list.replies.len(), args.config.servers.len());
+            for (j, k) in &i_cmps_others {
                 let diff = matcher::compare(
-                    &response_list.replies[i_cmp_target.0],
-                    &response_list.replies[i_cmp_target.1],
+                    &response_list.replies[*j],
+                    &response_list.replies[*k],
                     &args.config.diff.criteria,
                 );
                 if !diff.is_empty() {
-                    return Some((response_list.key, diff));
+                    return Some(response_list.key);
                 }
-                None
-            })
-            .collect();
+            }
+            None
+        })
+        .collect::<BTreeSet<QKey>>();
 
-        let mut target_disagreements: BTreeMap<Field, FieldMismatches> = BTreeMap::new();
-        for (key, qmismatches) in diffs {
-            if others_disagreements.contains(&key) {
-                continue;
+    let diffs: BTreeMap<_, _> = response_lists
+        .par_iter()
+        .filter_map(|response_list| {
+            let diff = matcher::compare(
+                &response_list.replies[i_cmp_target.0],
+                &response_list.replies[i_cmp_target.1],
+                &args.config.diff.criteria,
+            );
+            if !diff.is_empty() {
+                return Some((response_list.key, diff));
             }
-            for mismatch in qmismatches {
-                let field: Field = Field::from(&mismatch);
-                let mismatches = match target_disagreements.get_mut(&field) {
-                    Some(mismatches) => mismatches,
-                    None => {
-                        target_disagreements.insert(field, HashMap::new());
-                        target_disagreements.get_mut(&field).unwrap()
-                    }
-                };
-                let queries = match mismatches.get_mut(&mismatch) {
-                    Some(queries) => queries,
-                    None => {
-                        mismatches.insert(mismatch.clone(), BTreeSet::new());
-                        mismatches.get_mut(&mismatch).unwrap()
-                    }
-                };
-                queries.insert(key);
-            }
+            None
+        })
+        .collect();
+
+    let mut target_disagreements: BTreeMap<Field, FieldMismatches> = BTreeMap::new();
+    for (key, qmismatches) in diffs {
+        if others_disagreements.contains(&key) {
+            continue;
         }
-
-        report.set_others_disagree(&others_disagreements);
-        report.set_target_disagrees(target_disagreements);
+        for mismatch in qmismatches {
+            let field: Field = Field::from(&mismatch);
+            let mismatches = match target_disagreements.get_mut(&field) {
+                Some(mismatches) => mismatches,
+                None => {
+                    target_disagreements.insert(field, HashMap::new());
+                    target_disagreements.get_mut(&field).unwrap()
+                }
+            };
+            let queries = match mismatches.get_mut(&mismatch) {
+                Some(queries) => queries,
+                None => {
+                    mismatches.insert(mismatch.clone(), BTreeSet::new());
+                    mismatches.get_mut(&mismatch).unwrap()
+                }
+            };
+            queries.insert(key);
+        }
     }
 
-    {
-        let mdb = database::open_db(&env, metadb::NAME, false)?;
+    report.set_others_disagree(&others_disagreements);
+    report.set_target_disagrees(target_disagreements);
 
-        report.start_time = metadb::read_start_time(mdb, &txn)?;
-        report.end_time = metadb::read_end_time(mdb, &txn)?;
-    }
-    {
-        let qdb = database::open_db(&env, queriesdb::NAME, false)?;
-        let mut cur = txn.open_ro_cursor(qdb)?;
-        report.total_queries = cur.iter().count() as u64;
-    }
-    {
-        let mut cur = txn.open_ro_cursor(adb)?;
-        report.total_answers = cur.iter().count() as u64;
-    }
+    let mdb = database::open_db(&env, metadb::NAME, false)?;
+    report.start_time = metadb::read_start_time(mdb, &txn)?;
+    report.end_time = metadb::read_end_time(mdb, &txn)?;
+
+    let qdb = database::open_db(&env, queriesdb::NAME, false)?;
+    let mut cur = txn.open_ro_cursor(qdb)?;
+    report.total_queries = cur.iter().count() as u64;
+
+    let mut cur = txn.open_ro_cursor(adb)?;
+    report.total_answers = cur.iter().count() as u64;
 
     let out = File::create(args.datafile).map_err(Error::DatafileWrite)?;
     serde_json::to_writer(&out, &report)?;

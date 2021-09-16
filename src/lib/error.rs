@@ -31,7 +31,7 @@ pub enum Error {
     #[error("failed to write datafile: {0}")]
     DatafileWrite(io::Error),
     #[error("failed to serialize datafile into JSON: {0}")]
-    DatafileSerialize(#[from]serde_json::Error),
+    DatafileSerialize(#[from] serde_json::Error),
 }
 
 impl PartialEq for Error {
