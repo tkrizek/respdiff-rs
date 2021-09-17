@@ -6,6 +6,7 @@ variables:
 stages:
   - build
   - test
+  - release
 
 rust-latest:
   stage: build
@@ -39,3 +40,11 @@ msgdiff:
   after_script:
     # run once again to obtain cmd output (YUCK)
     - jd -set msgdiff-rs.json test/msgdiff-json/msgdiff.json
+
+release:
+  stage: release
+  only:
+    - master
+  script:
+    - cargo build --release
+    - 'curl --header "JOB-TOKEN: $CI_JOB_TOKEN" --upload-file target/release/msgdiff "${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/packages/generic/msgdiff/master/msgdiff"'
