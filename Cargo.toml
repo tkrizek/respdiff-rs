@@ -10,10 +10,6 @@ edition = "2018"
 name = "respdiff"
 path = "src/lib/lib.rs"
 
-[[bin]]
-name = "transceiver"
-path = "src/bin/transceiver.rs"
-
 [dependencies]
 lmdb-rkv = "0.14"
 byteorder = "1"
