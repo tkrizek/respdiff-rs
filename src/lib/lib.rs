@@ -16,6 +16,9 @@ pub mod error;
 /// Logic for comparing DNS messages.
 pub mod matcher;
 
+// TODO only here to trigger tests
+mod transceive;
+
 // -------- Types ---------
 
 /// 32 bit integer representing a key under which the query is stored in LMDB.
