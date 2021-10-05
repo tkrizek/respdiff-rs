@@ -129,7 +129,7 @@ pub mod queriesdb {
     ///
     /// Each query is identified by `QKey`, which is the key under which it is stored in the
     /// ``queries`` database.
-    #[derive(Debug)]
+    #[derive(Debug, Clone)]
     pub struct Query {
         /// Identifier which is used in the ``queries`` LMDB.
         pub key: QKey,
