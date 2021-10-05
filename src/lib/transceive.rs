@@ -10,6 +10,7 @@ use futures::channel::mpsc;
 use futures::sink::SinkExt;
 use futures::stream::FuturesUnordered;
 use std::time::{Duration, Instant};
+use std::mem;
 
 type Sender<T> = mpsc::UnboundedSender<T>;
 type Receiver<T> = mpsc::UnboundedReceiver<T>;
@@ -23,7 +24,7 @@ async fn send_loop(
     // convert servers to addrs
 }
 
-#[derive(Debug)]
+#[derive(Debug,Clone)]
 enum Response {
     Timeout,
     Data { delay: Duration, wire: Vec<u8> },
@@ -52,28 +53,41 @@ async fn transmit_query(
     // send to each server (should be pretty much instant)
     // wait for all answers
     // push to sink
-    let query = query.wire;
+    let mut futures  = FuturesUnordered::new();
 
-    let addr = addrs[0]; // TODO
-    let reply = io::timeout(timeout, async {
-        let socket = UdpSocket::bind("0.0.0.0:0").await?; // TODO ipv6
-        socket.connect(&addr).await?;
-        socket.send(&query).await?;
-        let since = Instant::now();
-        let mut buf = vec![0; 64 * 1024];
-        let n = socket.recv(&mut buf).await?;
-        Ok(Response::Data {
-            delay: since.elapsed(),
-            wire: buf[0..n].to_vec(),
-        })
-    })
-    .await;
+    for (i, addr) in addrs.iter().enumerate() {
+        let wire = query.wire.clone();  // TODO rename
+        let reply = io::timeout(timeout, async move {
+            let socket = UdpSocket::bind("0.0.0.0:0").await?; // TODO ipv6
+            socket.connect(&addr).await?;
+            socket.send(&wire).await?;
+            let since = Instant::now();
+            let mut buf = vec![0; 64 * 1024];
+            let n = socket.recv(&mut buf).await?;
+            Ok((i, Response::Data {
+                delay: since.elapsed(),
+                wire: buf[0..n].to_vec(),
+            }))
+        });
+        futures.push(reply);
+    }
 
-    match reply {
-        // TODO error handling for channel?
-        Ok(reply) => sink.send(vec![reply]).await,
-        Err(_) => sink.send(vec![Response::Timeout]).await,
-    };
+    // TODO select! ?
+    task::block_on(async {
+        let mut replies = vec![Response::Timeout; addrs.len()];
+        while let Some(res) = futures.next().await {
+            match res {
+                // TODO error handling for channel?
+                Ok((i, reply)) => {
+                    mem::replace(&mut replies[i], reply);
+                },
+                Err(_) => {},
+            };
+        };
+
+        sink.send(replies).await;
+    });
+
     Ok(())
 }
 
@@ -137,7 +151,6 @@ mod tests {
         futures.push(echo);
         task::block_on(async {
             while let Some(_) = futures.next().await {
-                println!("x");
             }
         });
 
