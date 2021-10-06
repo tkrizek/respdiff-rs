@@ -16,13 +16,28 @@ type Sender<T> = mpsc::UnboundedSender<T>;
 type Receiver<T> = mpsc::UnboundedReceiver<T>;
 type Result<T> = std::result::Result<T, Box<dyn std::error::Error + Send + Sync>>;
 
+async fn qproduce_loop(qps: u32) {
+    // let min_delay = 1. / qps;
+    // let mut delay = Duration::from_secs(0);
+    // let mut prev = Instant::now();
+    // let mut last = Instant::now();
+    // task::sleep(delay);
+}
+
 async fn send_loop(
-    queries: Receiver<Query>,
+    mut queries: Receiver<Query>,
     servers: Vec<ServerConfig>,
+    mut sink: Sender<Vec<Response>>,
     timeout: Duration,
-    qps: u32,
 ) {
-    // convert servers to addrs
+    let addrs: Vec<_> = servers.iter().map(|sconf| {
+        SocketAddr::new(sconf.ip, sconf.port)
+    }).collect();
+
+    while let Some(query) = queries.next().await {
+        task::spawn(
+            transmit_query(query.wire, addrs.clone(), timeout.clone(), sink.clone()));
+    }
 }
 
 #[derive(Debug,Clone)]
