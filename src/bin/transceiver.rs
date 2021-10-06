@@ -1,15 +1,14 @@
 extern crate lmdb;
 
 use clap::{App, Arg};
-use lmdb::{Cursor, Transaction};
+use lmdb::Transaction;
 use log::error;
 use respdiff::{
     config::Config,
-    database::{self, queriesdb::Query},
+    database::{self, queriesdb},
     error::Error,
 };
 
-use std::convert::TryFrom;
 use std::fs::File;
 use std::io::BufReader;
 use std::path::PathBuf;
@@ -98,11 +97,9 @@ fn transceiver() -> Result<(), Error> {
 
     {
         let txn = env.begin_ro_txn()?;
-        let mut cur = txn.open_ro_cursor(qdb)?;
-        let iter = cur.iter().map(Query::try_from);
-        iter.for_each(|query| {
+        for query in queriesdb::get_queries(qdb, &txn) {
             println!("{:?}", query);
-        });
+        }
     }
 
     Err(Error::NotImplemented)

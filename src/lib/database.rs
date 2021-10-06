@@ -117,10 +117,11 @@ pub mod metadb {
 
 /// ``queries`` LMDB and its related data & functions
 pub mod queriesdb {
+    use crate::error::Error;
     use crate::QKey;
     use byteorder::{ByteOrder, LittleEndian};
-    use log::warn;
-    use std::convert::TryFrom;
+    use lmdb::{Cursor, Database, RoTransaction, Transaction};
+    use std::convert::From;
 
     /// Queries LMDB database name
     pub const NAME: &str = "queries";
@@ -137,21 +138,25 @@ pub mod queriesdb {
         pub wire: Vec<u8>,
     }
 
-    impl TryFrom<lmdb::Result<(&[u8], &[u8])>> for Query {
-        type Error = lmdb::Error;
-
-        fn try_from(item: lmdb::Result<(&[u8], &[u8])>) -> Result<Self, Self::Error> {
-            match item {
-                Ok((key, val)) => Ok(Query {
-                    key: LittleEndian::read_u32(key),
-                    wire: val.to_vec(),
-                }),
-                Err(e) => {
-                    warn!("failed to read query from db");
-                    Err(e)
-                }
+    impl From<(&[u8], &[u8])> for Query {
+        fn from(item: (&[u8], &[u8])) -> Self {
+            let (key, val) = item;
+            Query {
+                key: LittleEndian::read_u32(key),
+                wire: val.to_vec(),
             }
         }
+    }
+
+    /// Retrieve all queries.
+    pub fn get_queries(db: Database, txn: &RoTransaction) -> Result<Vec<Query>, Error> {
+        let mut cur = txn.open_ro_cursor(db)?;
+        let mut queries: Vec<_> = Vec::new();
+
+        for res in cur.iter() {
+            queries.push(Query::from(res?));
+        }
+        Ok(queries)
     }
 }
 
