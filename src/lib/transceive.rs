@@ -12,14 +12,14 @@ use futures::stream::FuturesUnordered;
 use std::mem;
 use std::time::{Duration, Instant};
 
-type Sender<T> = mpsc::UnboundedSender<T>;
-type Receiver<T> = mpsc::UnboundedReceiver<T>;
-type Result<T> = std::result::Result<T, Box<dyn std::error::Error + Send + Sync>>;
+pub type Sender<T> = mpsc::UnboundedSender<T>;
+pub type Receiver<T> = mpsc::UnboundedReceiver<T>;
+pub type Result<T> = std::result::Result<T, Box<dyn std::error::Error + Send + Sync>>;
 
-async fn send_loop(
+pub async fn send_loop(
     queries: Vec<Query>,
     servers: Vec<ServerConfig>,
-    sink: Sender<Vec<Response>>,
+    sink: Sender<Vec<RawResponse>>,
     timeout: Duration,
     qps: u32,
 ) -> Result<()> {
@@ -42,27 +42,27 @@ async fn send_loop(
 }
 
 #[derive(Debug, Clone)]
-enum Response {
+pub enum RawResponse {
     Timeout,
     Data { delay: Duration, wire: Vec<u8> },
 }
 
-impl PartialEq for Response {
+impl PartialEq for RawResponse {
     fn eq(&self, other: &Self) -> bool {
         match (self, other) {
-            (Response::Timeout, Response::Timeout) => true,
-            (Response::Timeout, Response::Data { .. }) => false,
-            (Response::Data { .. }, Response::Timeout) => false,
-            (Response::Data { wire: w1, .. }, Response::Data { wire: w2, .. }) => w1 == w2,
+            (RawResponse::Timeout, RawResponse::Timeout) => true,
+            (RawResponse::Timeout, RawResponse::Data { .. }) => false,
+            (RawResponse::Data { .. }, RawResponse::Timeout) => false,
+            (RawResponse::Data { wire: w1, .. }, RawResponse::Data { wire: w2, .. }) => w1 == w2,
         }
     }
 }
-impl Eq for Response {}
+impl Eq for RawResponse {}
 
 async fn transmit_query(
     qwire: Vec<u8>,
     addrs: Vec<SocketAddr>,
-    mut sink: Sender<Vec<Response>>,
+    mut sink: Sender<Vec<RawResponse>>,
     timeout: Duration,
 ) -> Result<()> {
     let mut futures = FuturesUnordered::new();
@@ -82,7 +82,7 @@ async fn transmit_query(
             let n = socket.recv(&mut buf).await?;
             Ok((
                 i,
-                Response::Data {
+                RawResponse::Data {
                     delay: since.elapsed(),
                     wire: buf[0..n].to_vec(),
                 },
@@ -91,7 +91,7 @@ async fn transmit_query(
         futures.push(reply);
     }
 
-    let mut replies = vec![Response::Timeout; addrs.len()];
+    let mut replies = vec![RawResponse::Timeout; addrs.len()];
     while let Some(res) = futures.next().await {
         if let Ok((i, reply)) = res {
             let _ = mem::replace(&mut replies[i], reply);
@@ -101,8 +101,6 @@ async fn transmit_query(
     sink.send(replies).await?;
     Ok(())
 }
-
-async fn recv_loop(replies: Receiver<Vec<Response>>) {}
 
 #[cfg(test)]
 mod tests {
@@ -147,12 +145,12 @@ mod tests {
             drop(sender);
             assert_eq!(
                 receiver.next().await,
-                Some(vec![Response::Data {
+                Some(vec![RawResponse::Data {
                     delay: Duration::from_secs(0),
                     wire: query.wire.clone()
                 }])
             );
-            assert_eq!(receiver.next().await, Some(vec![Response::Timeout]));
+            assert_eq!(receiver.next().await, Some(vec![RawResponse::Timeout]));
             assert_eq!(receiver.next().await, None);
         });
         let echo = task::spawn(udp_echo_once(socket));

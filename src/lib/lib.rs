@@ -15,9 +15,8 @@ pub mod dataformat;
 pub mod error;
 /// Logic for comparing DNS messages.
 pub mod matcher;
-
-// TODO only here to trigger tests
-mod transceive;
+/// Sending DNS queries and receving reponses (async).
+pub mod transceive;
 
 // -------- Types ---------
 
