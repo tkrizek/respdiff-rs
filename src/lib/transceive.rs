@@ -2,45 +2,46 @@ use crate::{config::ServerConfig, database::queriesdb::Query};
 /// Module for asynchronously transmitting queries.
 use async_std::{
     io,
-    net::{SocketAddr, ToSocketAddrs, UdpSocket},
+    net::{SocketAddr, UdpSocket},
     prelude::*,
     task,
 };
 use futures::channel::mpsc;
 use futures::sink::SinkExt;
 use futures::stream::FuturesUnordered;
-use std::time::{Duration, Instant};
 use std::mem;
+use std::time::{Duration, Instant};
 
 type Sender<T> = mpsc::UnboundedSender<T>;
 type Receiver<T> = mpsc::UnboundedReceiver<T>;
 type Result<T> = std::result::Result<T, Box<dyn std::error::Error + Send + Sync>>;
 
-async fn qproduce_loop(qps: u32) {
-    // let min_delay = 1. / qps;
-    // let mut delay = Duration::from_secs(0);
-    // let mut prev = Instant::now();
-    // let mut last = Instant::now();
-    // task::sleep(delay);
-}
-
 async fn send_loop(
-    mut queries: Receiver<Query>,
+    queries: Vec<Query>,
     servers: Vec<ServerConfig>,
-    mut sink: Sender<Vec<Response>>,
+    sink: Sender<Vec<Response>>,
     timeout: Duration,
-) {
-    let addrs: Vec<_> = servers.iter().map(|sconf| {
-        SocketAddr::new(sconf.ip, sconf.port)
-    }).collect();
+    qps: u32,
+) -> Result<()> {
+    let addrs: Vec<_> = servers
+        .iter()
+        .map(|sconf| SocketAddr::new(sconf.ip, sconf.port))
+        .collect();
+    let delay = Duration::from_secs_f64(1. / qps as f64);
 
-    while let Some(query) = queries.next().await {
-        task::spawn(
-            transmit_query(query.wire, addrs.clone(), timeout.clone(), sink.clone()));
+    for query in queries {
+        task::spawn(transmit_query(
+            query.wire,
+            addrs.clone(),
+            sink.clone(),
+            timeout.clone(),
+        ));
+        task::sleep(delay).await; // not exactly precise
     }
+    Ok(())
 }
 
-#[derive(Debug,Clone)]
+#[derive(Debug, Clone)]
 enum Response {
     Timeout,
     Data { delay: Duration, wire: Vec<u8> },
@@ -61,10 +62,10 @@ impl Eq for Response {}
 async fn transmit_query(
     qwire: Vec<u8>,
     addrs: Vec<SocketAddr>,
-    timeout: Duration,
     mut sink: Sender<Vec<Response>>,
+    timeout: Duration,
 ) -> Result<()> {
-    let mut futures  = FuturesUnordered::new();
+    let mut futures = FuturesUnordered::new();
 
     for (i, addr) in addrs.iter().enumerate() {
         let data = qwire.clone();
@@ -79,10 +80,13 @@ async fn transmit_query(
             let since = Instant::now();
             let mut buf = vec![0; 64 * 1024];
             let n = socket.recv(&mut buf).await?;
-            Ok((i, Response::Data {
-                delay: since.elapsed(),
-                wire: buf[0..n].to_vec(),
-            }))
+            Ok((
+                i,
+                Response::Data {
+                    delay: since.elapsed(),
+                    wire: buf[0..n].to_vec(),
+                },
+            ))
         });
         futures.push(reply);
     }
@@ -90,9 +94,9 @@ async fn transmit_query(
     let mut replies = vec![Response::Timeout; addrs.len()];
     while let Some(res) = futures.next().await {
         if let Ok((i, reply)) = res {
-            mem::replace(&mut replies[i], reply);
+            let _ = mem::replace(&mut replies[i], reply);
         }
-    };
+    }
 
     sink.send(replies).await?;
     Ok(())
@@ -127,16 +131,16 @@ mod tests {
             assert!(transmit_query(
                 query.wire.clone(),
                 vec![addr],
+                sender.clone(),
                 Duration::from_millis(10),
-                sender.clone()
             )
             .await
             .is_ok());
             assert!(transmit_query(
                 query.wire.clone(),
                 vec![addr],
+                sender.clone(),
                 Duration::from_millis(10),
-                sender.clone()
             )
             .await
             .is_ok());
@@ -156,10 +160,7 @@ mod tests {
         let mut futures = FuturesUnordered::new();
         futures.push(transmission);
         futures.push(echo);
-        task::block_on(async {
-            while let Some(_) = futures.next().await {
-            }
-        });
+        while let Some(_) = futures.next().await {};
 
         Ok(())
     }
