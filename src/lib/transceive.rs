@@ -14,6 +14,7 @@ use std::mem;
 
 type Sender<T> = mpsc::UnboundedSender<T>;
 type Receiver<T> = mpsc::UnboundedReceiver<T>;
+type Result<T> = std::result::Result<T, Box<dyn std::error::Error + Send + Sync>>;
 
 async fn send_loop(
     queries: Receiver<Query>,
@@ -43,24 +44,23 @@ impl PartialEq for Response {
 impl Eq for Response {}
 
 async fn transmit_query(
-    query: Query, // TODO maybe wire is enough?
+    qwire: Vec<u8>,
     addrs: Vec<SocketAddr>,
     timeout: Duration,
     mut sink: Sender<Vec<Response>>,
-) -> Result<(), io::Error> {
-    // start timer
-    // https://docs.rs/async-std/1.9.0/async_std/io/fn.timeout.html
-    // send to each server (should be pretty much instant)
-    // wait for all answers
-    // push to sink
+) -> Result<()> {
     let mut futures  = FuturesUnordered::new();
 
     for (i, addr) in addrs.iter().enumerate() {
-        let wire = query.wire.clone();  // TODO rename
+        let data = qwire.clone();
         let reply = io::timeout(timeout, async move {
-            let socket = UdpSocket::bind("0.0.0.0:0").await?; // TODO ipv6
+            let bindaddr = match addr {
+                SocketAddr::V4(..) => "0.0.0.0:0",
+                SocketAddr::V6(..) => "::1:0",
+            };
+            let socket = UdpSocket::bind(bindaddr).await?;
             socket.connect(&addr).await?;
-            socket.send(&wire).await?;
+            socket.send(&data).await?;
             let since = Instant::now();
             let mut buf = vec![0; 64 * 1024];
             let n = socket.recv(&mut buf).await?;
@@ -72,22 +72,14 @@ async fn transmit_query(
         futures.push(reply);
     }
 
-    // TODO select! ?
-    task::block_on(async {
-        let mut replies = vec![Response::Timeout; addrs.len()];
-        while let Some(res) = futures.next().await {
-            match res {
-                // TODO error handling for channel?
-                Ok((i, reply)) => {
-                    mem::replace(&mut replies[i], reply);
-                },
-                Err(_) => {},
-            };
-        };
+    let mut replies = vec![Response::Timeout; addrs.len()];
+    while let Some(res) = futures.next().await {
+        if let Ok((i, reply)) = res {
+            mem::replace(&mut replies[i], reply);
+        }
+    };
 
-        sink.send(replies).await;
-    });
-
+    sink.send(replies).await?;
     Ok(())
 }
 
@@ -104,7 +96,7 @@ mod tests {
     }
 
     #[async_std::test]
-    async fn test_transmit_query() -> std::io::Result<()> {
+    async fn test_transmit_query() -> Result<()> {
         let addr: SocketAddr = "127.0.0.1:0".parse().unwrap();
         let socket = UdpSocket::bind(addr).await.unwrap();
         let addr = socket.local_addr().unwrap();
@@ -118,7 +110,7 @@ mod tests {
         let transmission = task::spawn(async move {
             let (sender, mut receiver) = mpsc::unbounded();
             assert!(transmit_query(
-                query.clone(),
+                query.wire.clone(),
                 vec![addr],
                 Duration::from_millis(10),
                 sender.clone()
@@ -126,7 +118,7 @@ mod tests {
             .await
             .is_ok());
             assert!(transmit_query(
-                query.clone(),
+                query.wire.clone(),
                 vec![addr],
                 Duration::from_millis(10),
                 sender.clone()
