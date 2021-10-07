@@ -1,4 +1,6 @@
-use crate::{config::ServerConfig, database::queriesdb::Query};
+// TODO document all pub
+
+use crate::{config::ServerConfig, database::queriesdb::Query, QKey};
 /// Module for asynchronously transmitting queries.
 use async_std::{
     io,
@@ -19,7 +21,7 @@ pub type Result<T> = std::result::Result<T, Box<dyn std::error::Error + Send + S
 pub async fn send_loop(
     queries: Vec<Query>,
     servers: Vec<ServerConfig>,
-    sink: Sender<Vec<RawResponse>>,
+    sink: Sender<RawResponseList>,
     timeout: Duration,
     qps: u32,
 ) -> Result<()> {
@@ -31,7 +33,7 @@ pub async fn send_loop(
 
     for query in queries {
         task::spawn(transmit_query(
-            query.wire,
+            query,
             addrs.clone(),
             sink.clone(),
             timeout.clone(),
@@ -59,16 +61,22 @@ impl PartialEq for RawResponse {
 }
 impl Eq for RawResponse {}
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RawResponseList {
+    pub key: QKey,
+    pub responses: Vec<RawResponse>,
+}
+
 async fn transmit_query(
-    qwire: Vec<u8>,
+    query: Query,
     addrs: Vec<SocketAddr>,
-    mut sink: Sender<Vec<RawResponse>>,
+    mut sink: Sender<RawResponseList>,
     timeout: Duration,
 ) -> Result<()> {
     let mut futures = FuturesUnordered::new();
 
     for (i, addr) in addrs.iter().enumerate() {
-        let data = qwire.clone();
+        let qwire = query.wire.clone();
         let reply = io::timeout(timeout, async move {
             let bindaddr = match addr {
                 SocketAddr::V4(..) => "0.0.0.0:0",
@@ -76,7 +84,7 @@ async fn transmit_query(
             };
             let socket = UdpSocket::bind(bindaddr).await?;
             socket.connect(&addr).await?;
-            socket.send(&data).await?;
+            socket.send(&qwire).await?;
             let since = Instant::now();
             let mut buf = vec![0; 64 * 1024];
             let n = socket.recv(&mut buf).await?;
@@ -91,14 +99,19 @@ async fn transmit_query(
         futures.push(reply);
     }
 
-    let mut replies = vec![RawResponse::Timeout; addrs.len()];
+    let mut responses = vec![RawResponse::Timeout; addrs.len()];
     while let Some(res) = futures.next().await {
         if let Ok((i, reply)) = res {
-            let _ = mem::replace(&mut replies[i], reply);
+            let _ = mem::replace(&mut responses[i], reply);
         }
     }
 
-    sink.send(replies).await?;
+    sink.send(
+        RawResponseList {
+            key: query.key,
+            responses: responses,
+        })
+        .await?;
     Ok(())
 }
 
@@ -127,7 +140,7 @@ mod tests {
         let transmission = task::spawn(async move {
             let (sender, mut receiver) = mpsc::unbounded();
             assert!(transmit_query(
-                query.wire.clone(),
+                query.clone(),
                 vec![addr],
                 sender.clone(),
                 Duration::from_millis(10),
@@ -135,7 +148,7 @@ mod tests {
             .await
             .is_ok());
             assert!(transmit_query(
-                query.wire.clone(),
+                query.clone(),
                 vec![addr],
                 sender.clone(),
                 Duration::from_millis(10),
@@ -145,12 +158,18 @@ mod tests {
             drop(sender);
             assert_eq!(
                 receiver.next().await,
-                Some(vec![RawResponse::Data {
-                    delay: Duration::from_secs(0),
-                    wire: query.wire.clone()
-                }])
+                Some(
+                    RawResponseList {
+                        key: query.key,
+                        responses: vec![RawResponse::Data {
+                            delay: Duration::from_secs(0),
+                            wire: query.wire.clone(),
+                        }],
+                })
             );
-            assert_eq!(receiver.next().await, Some(vec![RawResponse::Timeout]));
+            assert_eq!(receiver.next().await, Some(RawResponseList {
+                key: query.key,
+                responses: vec![RawResponse::Timeout]}));
             assert_eq!(receiver.next().await, None);
         });
         let echo = task::spawn(udp_echo_once(socket));
