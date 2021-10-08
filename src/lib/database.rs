@@ -164,8 +164,8 @@ pub mod queriesdb {
 pub mod answersdb {
     use crate::{
         error::{DbFormatError, Error},
-        DnsReply, ServerResponse, ServerResponseList,
         transceive::{RawResponse, RawResponseList},
+        DnsReply, ServerResponse, ServerResponseList,
     };
     use byteorder::{ByteOrder, LittleEndian};
     use domain::base::Message;
@@ -254,13 +254,13 @@ pub mod answersdb {
             match self {
                 RawResponse::Timeout => {
                     vec![0xff, 0xff, 0xff, 0xff, 0x00, 0x00]
-                },
-                RawResponse::Data { delay, wire } => {
+                }
+                RawResponse::Data { delay, mut wire } => {
                     let mut buf = [0; 6];
                     LittleEndian::write_u32(&mut buf[0..4], delay.as_micros() as u32);
                     LittleEndian::write_u16(&mut buf[4..6], wire.len() as u16);
                     let mut data = buf.to_vec();
-                    data.append(&mut wire.clone());
+                    data.append(&mut wire);
                     data
                 }
             }

@@ -81,10 +81,20 @@ async fn transceiver() -> Result<(), Error> {
     let txn = env.begin_ro_txn()?;
     let queries = queriesdb::get_queries(qdb, &txn)?;
 
-
-    let servers = args.config.servers.iter().map(|name| args.config.server_data.get(name).unwrap().clone()).collect();
+    let servers = args
+        .config
+        .servers
+        .iter()
+        .map(|name| *args.config.server_data.get(name).unwrap())
+        .collect();
     let (rsender, mut rreceiver) = mpsc::unbounded();
-    task::spawn(transceive::send_loop(queries, servers, rsender, Duration::from_secs_f64(args.config.sendrecv.timeout), 1500));  // TODO qps
+    task::spawn(transceive::send_loop(
+        queries,
+        servers,
+        rsender,
+        Duration::from_secs_f64(args.config.sendrecv.timeout),
+        1500,
+    )); // TODO qps
 
     let adb = database::open_db(&env, database::answersdb::NAME, true)?;
     let mut txn = env.begin_rw_txn()?;
@@ -94,7 +104,7 @@ async fn transceiver() -> Result<(), Error> {
             let mut key_buf = [0; 4];
             LittleEndian::write_u32(&mut key_buf, key);
             let data: Vec<u8> = responselist.into();
-            txn.put(adb, &key_buf, &data, WriteFlags::empty()).unwrap();  // TODO error handling?
+            txn.put(adb, &key_buf, &data, WriteFlags::empty()).unwrap(); // TODO error handling?
         }
     });
 

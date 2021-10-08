@@ -32,12 +32,7 @@ pub async fn send_loop(
     let delay = Duration::from_secs_f64(1. / qps as f64);
 
     for query in queries {
-        task::spawn(transmit_query(
-            query,
-            addrs.clone(),
-            sink.clone(),
-            timeout.clone(),
-        ));
+        task::spawn(transmit_query(query, addrs.clone(), sink.clone(), timeout));
         task::sleep(delay).await; // not exactly precise
     }
     Ok(())
@@ -106,12 +101,11 @@ async fn transmit_query(
         }
     }
 
-    sink.send(
-        RawResponseList {
-            key: query.key,
-            responses: responses,
-        })
-        .await?;
+    sink.send(RawResponseList {
+        key: query.key,
+        responses,
+    })
+    .await?;
     Ok(())
 }
 
@@ -158,18 +152,21 @@ mod tests {
             drop(sender);
             assert_eq!(
                 receiver.next().await,
-                Some(
-                    RawResponseList {
-                        key: query.key,
-                        responses: vec![RawResponse::Data {
-                            delay: Duration::from_secs(0),
-                            wire: query.wire.clone(),
-                        }],
+                Some(RawResponseList {
+                    key: query.key,
+                    responses: vec![RawResponse::Data {
+                        delay: Duration::from_secs(0),
+                        wire: query.wire.clone(),
+                    }],
                 })
             );
-            assert_eq!(receiver.next().await, Some(RawResponseList {
-                key: query.key,
-                responses: vec![RawResponse::Timeout]}));
+            assert_eq!(
+                receiver.next().await,
+                Some(RawResponseList {
+                    key: query.key,
+                    responses: vec![RawResponse::Timeout]
+                })
+            );
             assert_eq!(receiver.next().await, None);
         });
         let echo = task::spawn(udp_echo_once(socket));
@@ -177,7 +174,7 @@ mod tests {
         let mut futures = FuturesUnordered::new();
         futures.push(transmission);
         futures.push(echo);
-        while let Some(_) = futures.next().await {};
+        while let Some(_) = futures.next().await {}
 
         Ok(())
     }

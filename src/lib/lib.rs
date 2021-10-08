@@ -52,7 +52,7 @@ pub struct ServerResponseList {
     /// Query identifier.
     pub key: QKey,
     /// List of responses in the exact order as read from LMDB.
-    pub replies: Vec<ServerResponse>,  // TODO maybe rename -> responses
+    pub replies: Vec<ServerResponse>, // TODO maybe rename -> responses
 }
 
 /// Criteria used to compare answers.
