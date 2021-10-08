@@ -249,9 +249,9 @@ pub mod answersdb {
     }
 
     /// Serialize RawResponse into binary data.
-    impl Into<Vec<u8>> for RawResponse {
-        fn into(self) -> Vec<u8> {
-            match self {
+    impl From<RawResponse> for Vec<u8> {
+        fn from(value: RawResponse) -> Vec<u8> {
+            match value {
                 RawResponse::Timeout => {
                     vec![0xff, 0xff, 0xff, 0xff, 0x00, 0x00]
                 }
@@ -268,10 +268,10 @@ pub mod answersdb {
     }
 
     /// Serialize RawResponseList into binary data.
-    impl Into<Vec<u8>> for RawResponseList {
-        fn into(self) -> Vec<u8> {
+    impl From<RawResponseList> for Vec<u8> {
+        fn from(value: RawResponseList) -> Vec<u8> {
             let mut data = Vec::new();
-            for response in self.responses {
+            for response in value.responses {
                 let mut response: Vec<u8> = response.into();
                 data.append(&mut response);
             }
