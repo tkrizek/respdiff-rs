@@ -165,6 +165,7 @@ pub mod answersdb {
     use crate::{
         error::{DbFormatError, Error},
         DnsReply, ServerResponse, ServerResponseList,
+        transceive::{RawResponse, RawResponseList},
     };
     use byteorder::{ByteOrder, LittleEndian};
     use domain::base::Message;
@@ -245,6 +246,37 @@ pub mod answersdb {
             lists.push(ServerResponseList::try_from(res?)?);
         }
         Ok(lists)
+    }
+
+    /// Serialize RawResponse into binary data.
+    impl Into<Vec<u8>> for RawResponse {
+        fn into(self) -> Vec<u8> {
+            match self {
+                RawResponse::Timeout => {
+                    vec![0xff, 0xff, 0xff, 0xff, 0x00, 0x00]
+                },
+                RawResponse::Data { delay, wire } => {
+                    let mut buf = [0; 6];
+                    LittleEndian::write_u32(&mut buf[0..4], delay.as_micros() as u32);
+                    LittleEndian::write_u16(&mut buf[4..6], wire.len() as u16);
+                    let mut data = buf.to_vec();
+                    data.append(&mut wire.clone());
+                    data
+                }
+            }
+        }
+    }
+
+    /// Serialize RawResponseList into binary data.
+    impl Into<Vec<u8>> for RawResponseList {
+        fn into(self) -> Vec<u8> {
+            let mut data = Vec::new();
+            for response in self.responses {
+                let mut response: Vec<u8> = response.into();
+                data.append(&mut response);
+            }
+            data
+        }
     }
 }
 
