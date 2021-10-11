@@ -77,6 +77,21 @@ pub mod metadb {
         Ok(LittleEndian::read_u32(time))
     }
 
+    /// Write end time when transciever finished receiving queries to LMDB.
+    pub fn write_end_time(db: Database, txn: &mut RwTransaction) -> Result<(), Error> {
+        let duration = match SystemTime::now().duration_since(SystemTime::UNIX_EPOCH) {
+            Ok(val) => val,
+            Err(_) => return Err(Error::Time),
+        };
+        let ts: u32 = match duration.as_secs().try_into() {
+            Ok(val) => val,
+            Err(_) => return Err(Error::Time),
+        };
+        let mut bytes = [0; 4];
+        LittleEndian::write_u32(&mut bytes, ts);
+        Ok(txn.put(db, b"end_time", &bytes, WriteFlags::empty())?)
+    }
+
     /// Read the transceiver's end time.
     pub fn read_end_time(db: Database, txn: &RoTransaction) -> Result<u32, Error> {
         let time = txn.get(db, b"end_time")?;

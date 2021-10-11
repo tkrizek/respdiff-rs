@@ -106,7 +106,12 @@ async fn transceiver() -> Result<(), Error> {
             let data: Vec<u8> = responselist.into();
             txn.put(adb, &key_buf, &data, WriteFlags::empty()).unwrap(); // TODO error handling?
         }
+        txn.commit().unwrap(); // TODO err handle?
     });
+
+    let mut txn = env.begin_rw_txn()?;
+    database::metadb::write_end_time(metadb, &mut txn)?;
+    txn.commit()?;
 
     Ok(())
 }
