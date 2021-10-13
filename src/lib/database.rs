@@ -77,6 +77,21 @@ pub mod metadb {
         Ok(LittleEndian::read_u32(time))
     }
 
+    /// Write end time when transciever finished receiving queries to LMDB.
+    pub fn write_end_time(db: Database, txn: &mut RwTransaction) -> Result<(), Error> {
+        let duration = match SystemTime::now().duration_since(SystemTime::UNIX_EPOCH) {
+            Ok(val) => val,
+            Err(_) => return Err(Error::Time),
+        };
+        let ts: u32 = match duration.as_secs().try_into() {
+            Ok(val) => val,
+            Err(_) => return Err(Error::Time),
+        };
+        let mut bytes = [0; 4];
+        LittleEndian::write_u32(&mut bytes, ts);
+        Ok(txn.put(db, b"end_time", &bytes, WriteFlags::empty())?)
+    }
+
     /// Read the transceiver's end time.
     pub fn read_end_time(db: Database, txn: &RoTransaction) -> Result<u32, Error> {
         let time = txn.get(db, b"end_time")?;
@@ -117,10 +132,11 @@ pub mod metadb {
 
 /// ``queries`` LMDB and its related data & functions
 pub mod queriesdb {
+    use crate::error::Error;
     use crate::QKey;
     use byteorder::{ByteOrder, LittleEndian};
-    use log::warn;
-    use std::convert::TryFrom;
+    use lmdb::{Cursor, Database, RoTransaction, Transaction};
+    use std::convert::From;
 
     /// Queries LMDB database name
     pub const NAME: &str = "queries";
@@ -129,7 +145,7 @@ pub mod queriesdb {
     ///
     /// Each query is identified by `QKey`, which is the key under which it is stored in the
     /// ``queries`` database.
-    #[derive(Debug)]
+    #[derive(Debug, Clone)]
     pub struct Query {
         /// Identifier which is used in the ``queries`` LMDB.
         pub key: QKey,
@@ -137,21 +153,25 @@ pub mod queriesdb {
         pub wire: Vec<u8>,
     }
 
-    impl TryFrom<lmdb::Result<(&[u8], &[u8])>> for Query {
-        type Error = lmdb::Error;
-
-        fn try_from(item: lmdb::Result<(&[u8], &[u8])>) -> Result<Self, Self::Error> {
-            match item {
-                Ok((key, val)) => Ok(Query {
-                    key: LittleEndian::read_u32(key),
-                    wire: val.to_vec(),
-                }),
-                Err(e) => {
-                    warn!("failed to read query from db");
-                    Err(e)
-                }
+    impl From<(&[u8], &[u8])> for Query {
+        fn from(item: (&[u8], &[u8])) -> Self {
+            let (key, val) = item;
+            Query {
+                key: LittleEndian::read_u32(key),
+                wire: val.to_vec(),
             }
         }
+    }
+
+    /// Retrieve all queries.
+    pub fn get_queries(db: Database, txn: &RoTransaction) -> Result<Vec<Query>, Error> {
+        let mut cur = txn.open_ro_cursor(db)?;
+        let mut queries: Vec<_> = Vec::new();
+
+        for res in cur.iter() {
+            queries.push(Query::from(res?));
+        }
+        Ok(queries)
     }
 }
 
@@ -159,6 +179,7 @@ pub mod queriesdb {
 pub mod answersdb {
     use crate::{
         error::{DbFormatError, Error},
+        transceive::{RawResponse, RawResponseList},
         DnsReply, ServerResponse, ServerResponseList,
     };
     use byteorder::{ByteOrder, LittleEndian};
@@ -240,6 +261,37 @@ pub mod answersdb {
             lists.push(ServerResponseList::try_from(res?)?);
         }
         Ok(lists)
+    }
+
+    /// Serialize RawResponse into binary data.
+    impl From<RawResponse> for Vec<u8> {
+        fn from(value: RawResponse) -> Vec<u8> {
+            match value {
+                RawResponse::Timeout => {
+                    vec![0xff, 0xff, 0xff, 0xff, 0x00, 0x00]
+                }
+                RawResponse::Data { delay, mut wire } => {
+                    let mut buf = [0; 6];
+                    LittleEndian::write_u32(&mut buf[0..4], delay.as_micros() as u32);
+                    LittleEndian::write_u16(&mut buf[4..6], wire.len() as u16);
+                    let mut data = buf.to_vec();
+                    data.append(&mut wire);
+                    data
+                }
+            }
+        }
+    }
+
+    /// Serialize RawResponseList into binary data.
+    impl From<RawResponseList> for Vec<u8> {
+        fn from(value: RawResponseList) -> Vec<u8> {
+            let mut data = Vec::new();
+            for response in value.responses {
+                let mut response: Vec<u8> = response.into();
+                data.append(&mut response);
+            }
+            data
+        }
     }
 }
 

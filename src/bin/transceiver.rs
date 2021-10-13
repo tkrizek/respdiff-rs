@@ -1,18 +1,22 @@
 extern crate lmdb;
 
+use async_std::{prelude::*, task};
+use byteorder::{ByteOrder, LittleEndian};
 use clap::{App, Arg};
-use lmdb::{Cursor, Transaction};
+use futures::channel::mpsc;
+use lmdb::{Transaction, WriteFlags};
 use log::error;
 use respdiff::{
     config::Config,
-    database::{self, queriesdb::Query},
+    database::{self, queriesdb},
     error::Error,
+    transceive,
 };
 
-use std::convert::TryFrom;
 use std::fs::File;
 use std::io::BufReader;
 use std::path::PathBuf;
+use std::time::Duration;
 
 struct Args {
     config: Config,
@@ -48,7 +52,7 @@ fn parse_args() -> Result<Args, Error> {
     })
 }
 
-fn transceiver() -> Result<(), Error> {
+async fn transceiver() -> Result<(), Error> {
     let args = parse_args()?;
 
     let env = match database::open_env(&args.envdir) {
@@ -58,60 +62,66 @@ fn transceiver() -> Result<(), Error> {
             std::process::exit(1);
         }
     };
-    let metadb = match database::open_db(&env, database::metadb::NAME, true) {
-        Ok(db) => db,
-        Err(e) => {
-            error!(
-                "failed to open LMDB database '{}': {:?}",
-                &database::metadb::NAME,
-                e
-            );
-            std::process::exit(1);
-        }
-    };
-
+    let metadb = database::open_db(&env, database::metadb::NAME, true)?;
     {
         let mut txn = env.begin_rw_txn()?;
-        database::metadb::write_servers(metadb, &mut txn, args.config.servers)?;
+        database::metadb::write_servers(metadb, &mut txn, args.config.servers.clone())?;
         database::metadb::write_version(metadb, &mut txn)?;
         database::metadb::write_start_time(metadb, &mut txn)?;
         txn.commit()?;
     }
 
+    // TODO consider this func
     //if database::exists_db(&env, &database::answersdb::NAME)? {
     //    error!("answers database already exists");
     //    std::process::exit(1);
     //}
-    let _adb = database::open_db(&env, database::answersdb::NAME, true)?;
 
-    let qdb = match database::open_db(&env, database::queriesdb::NAME, false) {
-        Ok(db) => db,
-        Err(e) => {
-            error!(
-                "failed to open LMDB database '{}': {:?}",
-                &database::queriesdb::NAME,
-                e
-            );
-            std::process::exit(1);
+    let qdb = database::open_db(&env, database::queriesdb::NAME, false)?;
+    let txn = env.begin_ro_txn()?;
+    let queries = queriesdb::get_queries(qdb, &txn)?;
+
+    let servers = args
+        .config
+        .servers
+        .iter()
+        .map(|name| *args.config.server_data.get(name).unwrap())
+        .collect();
+    let (rsender, mut rreceiver) = mpsc::unbounded();
+    task::spawn(transceive::send_loop(
+        queries,
+        servers,
+        rsender,
+        Duration::from_secs_f64(args.config.sendrecv.timeout),
+        800, // TODO hardcoded qps
+    ));
+
+    let adb = database::open_db(&env, database::answersdb::NAME, true)?;
+    let mut txn = env.begin_rw_txn()?;
+    task::block_on(async move {
+        while let Some(responselist) = rreceiver.next().await {
+            let key = responselist.key;
+            let mut key_buf = [0; 4];
+            LittleEndian::write_u32(&mut key_buf, key);
+            let data: Vec<u8> = responselist.into();
+            txn.put(adb, &key_buf, &data, WriteFlags::empty()).unwrap(); // TODO error handling?
         }
-    };
+        txn.commit().unwrap(); // TODO err handle?
+    });
 
-    {
-        let txn = env.begin_ro_txn()?;
-        let mut cur = txn.open_ro_cursor(qdb)?;
-        let iter = cur.iter().map(Query::try_from);
-        iter.for_each(|query| {
-            println!("{:?}", query);
-        });
-    }
+    let mut txn = env.begin_rw_txn()?;
+    database::metadb::write_end_time(metadb, &mut txn)?;
+    txn.commit()?;
 
-    Err(Error::NotImplemented)
+    Ok(())
 }
 
 fn main() {
     env_logger::init();
 
-    match transceiver() {
+    let res = task::block_on(transceiver());
+
+    match res {
         Ok(_) => {}
         Err(e) => {
             error!("{}", e);

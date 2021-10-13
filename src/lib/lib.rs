@@ -15,6 +15,8 @@ pub mod dataformat;
 pub mod error;
 /// Logic for comparing DNS messages.
 pub mod matcher;
+/// Sending DNS queries and receving reponses (async).
+pub mod transceive;
 
 // -------- Types ---------
 
@@ -45,12 +47,12 @@ pub enum ServerResponse {
 }
 
 /// A set of responses from all servers for a particular query.
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub struct ServerResponseList {
     /// Query identifier.
     pub key: QKey,
     /// List of responses in the exact order as read from LMDB.
-    pub replies: Vec<ServerResponse>,
+    pub replies: Vec<ServerResponse>, // TODO maybe rename -> responses
 }
 
 /// Criteria used to compare answers.
