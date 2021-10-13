@@ -93,8 +93,8 @@ async fn transceiver() -> Result<(), Error> {
         servers,
         rsender,
         Duration::from_secs_f64(args.config.sendrecv.timeout),
-        1500,
-    )); // TODO qps
+        800, // TODO hardcoded qps
+    ));
 
     let adb = database::open_db(&env, database::answersdb::NAME, true)?;
     let mut txn = env.begin_rw_txn()?;
