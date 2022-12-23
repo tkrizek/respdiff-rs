@@ -1,7 +1,6 @@
 use crate::{error::Error, DiffCriteria};
 use serde::{Deserialize, Deserializer};
 use std::collections::HashMap;
-use std::convert::{TryFrom, TryInto};
 use std::net::IpAddr;
 
 /// Configuration file representation

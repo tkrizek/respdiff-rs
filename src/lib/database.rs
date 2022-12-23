@@ -40,7 +40,6 @@ pub mod metadb {
     use crate::error::{DbFormatError, Error};
     use byteorder::{ByteOrder, LittleEndian};
     use lmdb::{Database, RoTransaction, RwTransaction, Transaction, WriteFlags};
-    use std::convert::TryInto;
     use std::time::SystemTime;
 
     /// Meta LMDB database name
@@ -185,7 +184,6 @@ pub mod answersdb {
     use byteorder::{ByteOrder, LittleEndian};
     use domain::base::Message;
     use lmdb::{Cursor, Database, RoTransaction, Transaction};
-    use std::convert::TryFrom;
     use std::time::Duration;
 
     /// Answers LMDB database name
@@ -300,7 +298,6 @@ mod tests {
     use super::*;
     use crate::error::DbFormatError;
     use lmdb::{Error as LmdbError, Transaction};
-    use std::convert::TryFrom;
     use tempdir::TempDir;
 
     #[test]
