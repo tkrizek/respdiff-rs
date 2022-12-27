@@ -5,7 +5,8 @@ variables:
 
 stages:
   - build
-  - test
+  - lint
+  - integration
   - release
 
 rust-latest:
@@ -23,17 +24,17 @@ rust-nightly:
   allow_failure: true
 
 fmt:
-  stage: test
+  stage: lint
   script:
     - cargo fmt -- --check
 
 clippy:
-  stage: test
+  stage: lint
   script:
     - cargo clippy -- -D "warnings"
 
-msgdiff:
-  stage: test
+diff-answers:
+  stage: integration
   script:
     - cargo run -- diff-answers -e /lmdb/msgdiff-json -c test/msgdiff-json/respdiff.cfg -d msgdiff-rs.json
     - if [ -n "$(jd -set msgdiff-rs.json test/msgdiff-json/msgdiff.json)" ]; then exit 1; fi
