@@ -35,7 +35,7 @@ clippy:
 msgdiff:
   stage: test
   script:
-    - cargo run --bin msgdiff -- -c test/msgdiff-json/respdiff.cfg -d msgdiff-rs.json /lmdb/msgdiff-json
+    - cargo run -- diff-answers -e /lmdb/msgdiff-json -c test/msgdiff-json/respdiff.cfg -d msgdiff-rs.json
     - if [ -n "$(jd -set msgdiff-rs.json test/msgdiff-json/msgdiff.json)" ]; then exit 1; fi
   after_script:
     # run once again to obtain cmd output (YUCK)

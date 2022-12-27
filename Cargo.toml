@@ -6,6 +6,9 @@ edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
+[[bin]]
+name = "respdiff"
+
 [lib]
 name = "respdiff"
 path = "src/lib/lib.rs"
@@ -18,7 +21,7 @@ env_logger = "0.9"
 serde = { version = "1.0", features = ["derive"] }
 serde_ini = "0.2.0"
 serde_json = "1.0"
-clap = "2"
+clap = { version = "4.0", features = ["derive"] }
 domain = { version= "0.7" }
 thiserror = "1.0"
 rayon = "1.6"
