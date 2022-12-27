@@ -5,7 +5,8 @@ variables:
 
 stages:
   - build
-  - test
+  - lint
+  - integration
   - release
 
 rust-latest:
@@ -23,28 +24,37 @@ rust-nightly:
   allow_failure: true
 
 fmt:
-  stage: test
+  stage: lint
   script:
     - cargo fmt -- --check
 
 clippy:
-  stage: test
+  stage: lint
   script:
     - cargo clippy -- -D "warnings"
 
-msgdiff:
-  stage: test
+diff-answers:
+  stage: integration
   script:
-    - cargo run --bin msgdiff -- -c test/msgdiff-json/respdiff.cfg -d msgdiff-rs.json /lmdb/msgdiff-json
+    - cargo run -- diff-answers -e /lmdb/msgdiff-json -c test/msgdiff-json/respdiff.cfg -d msgdiff-rs.json
     - if [ -n "$(jd -set msgdiff-rs.json test/msgdiff-json/msgdiff.json)" ]; then exit 1; fi
   after_script:
     # run once again to obtain cmd output (YUCK)
     - jd -set msgdiff-rs.json test/msgdiff-json/msgdiff.json
 
-release:
+release-dev:
   stage: release
   only:
     - master
   script:
     - cargo build --release
-    - 'curl --header "JOB-TOKEN: $CI_JOB_TOKEN" --upload-file target/release/msgdiff "${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/packages/generic/msgdiff/master/msgdiff"'
+    - 'curl --header "JOB-TOKEN: $CI_JOB_TOKEN" --upload-file target/release/respdiff "${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/packages/generic/respdiff-dev/master/respdiff"'
+
+release:
+  stage: release
+  only:
+    - tags
+  script:
+    - cargo build --release
+    - 'curl --header "JOB-TOKEN: $CI_JOB_TOKEN" --upload-file target/release/respdiff "${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/packages/generic/respdiff/$CI_COMMIT_TAG/respdiff"'
+    - 'curl --header "JOB-TOKEN: $CI_JOB_TOKEN" --upload-file target/release/respdiff "${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/packages/generic/respdiff/latest/respdiff"'

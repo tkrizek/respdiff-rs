@@ -1,8 +1,10 @@
 use crate::{error::Error, DiffCriteria};
 use serde::{Deserialize, Deserializer};
 use std::collections::HashMap;
-use std::convert::{TryFrom, TryInto};
+use std::fs::File;
+use std::io::BufReader;
 use std::net::IpAddr;
+use std::path::PathBuf;
 
 /// Configuration file representation
 #[derive(Deserialize, PartialEq, Debug, Clone)]
@@ -14,6 +16,19 @@ pub struct Config {
     pub servers: Vec<String>,
     #[serde(flatten)]
     pub server_data: HashMap<String, ServerConfig>,
+}
+impl TryFrom<&Option<PathBuf>> for Config {
+    type Error = Error;
+
+    fn try_from(path: &Option<PathBuf>) -> Result<Self, Self::Error> {
+        let path = match path {
+            Some(path) => path.clone(),
+            None => PathBuf::from("respdiff.cfg"),
+        };
+        let file = File::open(path).map_err(Error::ConfigFile)?;
+        let buf = BufReader::new(file);
+        serde_ini::from_bufread::<_, Config>(buf).map_err(Error::ConfigRead)
+    }
 }
 
 fn servers_from_namelist<'de, D>(deserializer: D) -> Result<Vec<String>, D::Error>
